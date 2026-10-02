@@ -3,6 +3,7 @@ export type Post = {
   authorId: string;
   author: string;
   handle: string;
+  authorBio: string;
   avatarUrl: string | null;
   isVerified: boolean;
   body: string;
@@ -16,6 +17,11 @@ export type Post = {
   isMine: boolean;
   likedByMe: boolean;
   repostedByMe: boolean;
+  repostInfo?: {
+    name: string;
+    handle: string;
+    thoughts: string;
+  };
   commentsPreview: Comment[];
 };
 

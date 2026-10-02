@@ -18,13 +18,30 @@ export async function GET(request: Request) {
     if (followedIds.length === 0) return NextResponse.json({ posts: [] });
   }
 
+  let blockedAuthorIds: string[] = [];
+  let hiddenPostIds: string[] = [];
+  if (user) {
+    const [blocksResult, hiddenPostsResult] = await Promise.all([
+      supabase.from("user_blocks").select("blocked_id").eq("blocker_id", user.id),
+      supabase.from("hidden_posts").select("post_id").eq("user_id", user.id),
+    ]);
+    if (blocksResult.error || hiddenPostsResult.error) {
+      return NextResponse.json({ message: "Unable to apply your feed preferences." }, { status: 500 });
+    }
+    blockedAuthorIds = (blocksResult.data ?? []).map((block) => block.blocked_id);
+    hiddenPostIds = (hiddenPostsResult.data ?? []).map((hiddenPost) => hiddenPost.post_id);
+  }
+
   let query = supabase
     .from("posts")
-    .select("id,author_id,body,tags,media_urls,media_type,likes_count,comments_count,reposts_count,created_at,author:profiles!posts_author_id_fkey(display_name,handle,avatar_url,is_verified)")
+    .select("id,author_id,body,tags,media_urls,media_type,likes_count,comments_count,reposts_count,created_at,author:profiles!posts_author_id_fkey(display_name,handle,bio,avatar_url,is_verified)")
+    .is("deleted_at", null)
     .order("created_at", { ascending: false })
     .limit(30);
 
   if (followedIds) query = query.in("author_id", followedIds);
+  if (blockedAuthorIds.length > 0) query = query.not("author_id", "in", `(${blockedAuthorIds.join(",")})`);
+  if (hiddenPostIds.length > 0) query = query.not("id", "in", `(${hiddenPostIds.join(",")})`);
   const { data, error } = await query;
 
   if (error) {
@@ -46,6 +63,7 @@ export async function GET(request: Request) {
     authorId: post.author_id,
     author: post.author?.display_name ?? "Creator",
     handle: post.author?.handle ?? "@creator",
+    authorBio: post.author?.bio ?? "",
     avatarUrl: post.author?.avatar_url ?? null,
     isVerified: post.author?.is_verified ?? false,
     body: post.body,

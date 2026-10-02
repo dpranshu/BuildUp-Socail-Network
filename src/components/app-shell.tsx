@@ -1,10 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
-import { Bell, House, Plus, Search, UserRound } from "lucide-react";
+import { Bell, House, LogOut, MessageCircle, Plus, Search, Settings } from "lucide-react";
 import { ProfileAvatar } from "@/components/profile-avatar";
 
 const navItems = [
@@ -12,7 +12,7 @@ const navItems = [
   { href: "/search", label: "Search", icon: Search },
   { href: "/create", label: "Create", icon: Plus },
   { href: "/notifications", label: "Notifications", icon: Bell },
-  { href: "/profile", label: "Profile", icon: UserRound },
+  { href: "/messages", label: "Messages", icon: MessageCircle },
 ];
 
 export function AppShell({
@@ -23,7 +23,12 @@ export function AppShell({
   title: string;
 }) {
   const pathname = usePathname();
+  const router = useRouter();
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  const [signedIn, setSignedIn] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
+  const [signOutError, setSignOutError] = useState("");
 
   useEffect(() => {
     let active = true;
@@ -34,10 +39,16 @@ export function AppShell({
     fetch("/api/auth/session")
       .then((response) => response.json())
       .then((data) => {
-        if (active) setAvatarUrl(data.user?.avatarUrl ?? null);
+        if (active) {
+          setAvatarUrl(data.user?.avatarUrl ?? null);
+          setSignedIn(Boolean(data.user));
+        }
       })
       .catch(() => {
-        if (active) setAvatarUrl(null);
+        if (active) {
+          setAvatarUrl(null);
+          setSignedIn(false);
+        }
       });
 
     window.addEventListener("profile-avatar-updated", onAvatarUpdated);
@@ -47,10 +58,25 @@ export function AppShell({
     };
   }, [pathname]);
 
+  async function signOut() {
+    setSigningOut(true);
+    setSignOutError("");
+    try {
+      const response = await fetch("/api/auth/logout", { method: "POST" });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.message ?? "Unable to sign out.");
+      router.push("/feed");
+      router.refresh();
+    } catch (error) {
+      setSignOutError(error instanceof Error ? error.message : "Unable to sign out.");
+      setSigningOut(false);
+    }
+  }
+
   return (
     <div className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">
-      <header className="app-header sticky top-0 z-40 border-b border-white/[0.07]">
-        <div className="relative mx-auto flex h-[72px] max-w-[640px] items-center justify-center px-4">
+      <header className="app-header sticky top-0 z-40">
+        <div className="relative mx-auto flex h-[72px] max-w-[420px] items-center justify-center border-b border-white/[0.07] px-4">
           <Link
             href="/profile"
             aria-label="Your profile"
@@ -71,9 +97,42 @@ export function AppShell({
               </text>
             </svg>
           </Link>
+          {pathname === "/profile" && signedIn && (
+            <div className="absolute right-5">
+              <button
+                type="button"
+                aria-label="Profile settings"
+                title="Profile settings"
+                aria-haspopup="menu"
+                aria-expanded={settingsOpen}
+                onClick={() => {
+                  setSettingsOpen((open) => !open);
+                  setSignOutError("");
+                }}
+                className="flex h-9 w-9 items-center justify-center rounded-full text-[var(--muted)] hover:bg-white/[0.06] hover:text-white"
+              >
+                <Settings size={19} />
+              </button>
+              {settingsOpen && (
+                <div role="menu" className="absolute right-0 top-11 z-50 min-w-44 overflow-hidden rounded-md border hairline bg-[var(--surface)] p-1 shadow-xl">
+                  <button
+                    type="button"
+                    role="menuitem"
+                    disabled={signingOut}
+                    onClick={() => void signOut()}
+                    className="flex min-h-10 w-full items-center gap-2 rounded px-3 text-left text-sm text-white hover:bg-white/[0.06] disabled:opacity-50"
+                  >
+                    <LogOut size={16} />
+                    {signingOut ? "Signing out…" : "Sign out"}
+                  </button>
+                  {signOutError && <p role="alert" className="px-3 py-2 text-xs text-rose-300">{signOutError}</p>}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </header>
-      <main className="mx-auto min-h-[calc(100vh-72px)] max-w-[640px] px-0 pb-28 sm:pb-20">
+      <main className="mx-auto min-h-[calc(100vh-72px)] max-w-[420px] px-0 pb-28 sm:pb-20">
         <div className="sr-only">{title}</div>
         {children}
       </main>

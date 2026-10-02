@@ -20,6 +20,7 @@ export async function GET(request: Request) {
     supabase.from("posts")
       .select("id,author_id,body,tags,media_urls,media_type,likes_count,comments_count,reposts_count,created_at,author:profiles!posts_author_id_fkey(display_name,handle)")
       .ilike("body", `%${query}%`)
+      .is("deleted_at", null)
       .order("created_at", { ascending: false })
       .limit(20),
   ]);

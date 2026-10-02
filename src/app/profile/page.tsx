@@ -6,8 +6,8 @@ import { useRouter } from "next/navigation";
 import { AppShell } from "@/components/app-shell";
 import { ProfileAvatar } from "@/components/profile-avatar";
 import { PostCard } from "@/components/post-card";
-import type { Profile, Project } from "@/lib/types";
-import { BadgeCheck, Cake, Camera, ExternalLink, LoaderCircle, MapPin, Pencil, Plus, Ruler, X } from "lucide-react";
+import type { Comment, Post, Profile, Project } from "@/lib/types";
+import { BadgeCheck, Cake, Camera, ExternalLink, Heart, LoaderCircle, MapPin, MessageCircle, Pencil, Plus, Repeat2, Ruler, Share2, X } from "lucide-react";
 
 type ProfileTab = "posts" | "overview" | "projects";
 const pronounChoices = ["he/him", "she/her", "they/them", "any pronouns", "prefer not to say"];
@@ -16,7 +16,7 @@ export default function ProfilePage({ handle }: { handle?: string }) {
   const router = useRouter();
   const [profile, setProfile] = useState<Profile | null>(null);
   const [signedOut, setSignedOut] = useState(false);
-  const [tab, setTab] = useState<ProfileTab>("overview");
+  const [tab, setTab] = useState<ProfileTab>("posts");
   const [editing, setEditing] = useState(false);
   const [addingProject, setAddingProject] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -24,6 +24,10 @@ export default function ProfilePage({ handle }: { handle?: string }) {
   const [pronounChoice, setPronounChoice] = useState("he/him");
   const [customPronouns, setCustomPronouns] = useState("");
   const [message, setMessage] = useState("");
+  const [openComments, setOpenComments] = useState<string | null>(null);
+  const [commentDraft, setCommentDraft] = useState("");
+  const [repostComposerPost, setRepostComposerPost] = useState<string | null>(null);
+  const [repostDraft, setRepostDraft] = useState("");
 
   useEffect(() => {
     fetch(`/api/profile${handle ? `?handle=${encodeURIComponent(handle)}` : ""}`)
@@ -47,6 +51,145 @@ export default function ProfilePage({ handle }: { handle?: string }) {
 
   const isOwnProfile = Boolean(profile?.isOwnProfile);
 
+  async function togglePostLike(post: Post) {
+    if (!profile) return;
+    setMessage("");
+    const liked = !post.likedByMe;
+    setProfile((current) => current ? {
+      ...current,
+      posts: current.posts.map((item) => item.id === post.id
+        ? { ...item, likedByMe: liked, likes: Math.max(0, item.likes + (liked ? 1 : -1)) }
+        : item),
+    } : current);
+    try {
+      const response = await fetch(`/api/posts/${post.id}/like`, { method: liked ? "POST" : "DELETE" });
+      const data = await response.json();
+      if (response.status === 401) {
+        router.push("/login");
+        return;
+      }
+      if (!response.ok) throw new Error(data.message ?? "Unable to update like.");
+      setProfile((current) => current ? {
+        ...current,
+        posts: current.posts.map((item) => item.id === post.id ? { ...item, likes: data.likes } : item),
+      } : current);
+    } catch (error) {
+      setProfile((current) => current ? {
+        ...current,
+        posts: current.posts.map((item) => item.id === post.id
+          ? { ...item, likedByMe: post.likedByMe, likes: post.likes }
+          : item),
+      } : current);
+      setMessage(error instanceof Error ? error.message : "Could not update like. Try again.");
+    }
+  }
+
+  async function togglePostComments(postId: string) {
+    if (openComments === postId) {
+      setOpenComments(null);
+      return;
+    }
+    setOpenComments(postId);
+    setCommentDraft("");
+    try {
+      const response = await fetch(`/api/posts/${postId}/comments`);
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.message ?? "Unable to load comments.");
+      setProfile((current) => current ? {
+        ...current,
+        posts: current.posts.map((post) => post.id === postId
+          ? { ...post, commentsPreview: data.comments as Comment[] }
+          : post),
+      } : current);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Unable to load comments.");
+    }
+  }
+
+  async function submitPostComment(postId: string) {
+    const body = commentDraft.trim();
+    if (!body) return;
+    setMessage("");
+    try {
+      const response = await fetch(`/api/posts/${postId}/comments`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ body }),
+      });
+      const data = await response.json();
+      if (response.status === 401) {
+        router.push("/login");
+        return;
+      }
+      if (!response.ok) throw new Error(data.message ?? "Could not add comment.");
+      setProfile((current) => current ? {
+        ...current,
+        posts: current.posts.map((post) => post.id === postId
+          ? { ...post, comments: post.comments + 1, commentsPreview: [...post.commentsPreview, data.comment] }
+          : post),
+      } : current);
+      setCommentDraft("");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Could not add comment.");
+    }
+  }
+
+  async function togglePostRepost(post: Post) {
+    if (!profile) return;
+    if (!post.repostedByMe) {
+      setRepostComposerPost(post.id);
+      setRepostDraft("");
+      return;
+    }
+    setMessage("");
+    try {
+      const response = await fetch(`/api/posts/${post.id}/repost`, { method: "DELETE" });
+      const data = await response.json();
+      if (response.status === 401) {
+        router.push("/login");
+        return;
+      }
+      if (!response.ok) throw new Error(data.message ?? "Unable to update repost.");
+      setProfile((current) => current ? {
+        ...current,
+        posts: current.posts.flatMap((item) => {
+          if (item.id !== post.id) return [item];
+          if (item.repostInfo && isOwnProfile) return [];
+          return [{ ...item, repostedByMe: false, reposts: data.reposts }];
+        }),
+      } : current);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Could not update repost. Try again.");
+    }
+  }
+
+  async function submitPostRepost(post: Post) {
+    setMessage("");
+    try {
+      const response = await fetch(`/api/posts/${post.id}/repost`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ thoughts: repostDraft }),
+      });
+      const data = await response.json();
+      if (response.status === 401) {
+        router.push("/login");
+        return;
+      }
+      if (!response.ok) throw new Error(data.message ?? "Unable to repost.");
+      setProfile((current) => current ? {
+        ...current,
+        posts: current.posts.map((item) => item.id === post.id
+          ? { ...item, repostedByMe: true, reposts: data.reposts }
+          : item),
+      } : current);
+      setRepostComposerPost(null);
+      setRepostDraft("");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Could not update repost. Try again.");
+    }
+  }
+
   async function toggleFollow() {
     if (!profile) return;
     const following = !profile.isFollowing;
@@ -69,16 +212,6 @@ export default function ProfilePage({ handle }: { handle?: string }) {
     } catch {
       setProfile(profile);
       setMessage("Could not update follow. Try again.");
-    }
-  }
-
-  async function signOut() {
-    const response = await fetch("/api/auth/logout", { method: "POST" });
-    if (response.ok) {
-      router.push("/feed");
-      router.refresh();
-    } else {
-      setMessage("Could not sign out. Try again.");
     }
   }
 
@@ -265,10 +398,6 @@ export default function ProfilePage({ handle }: { handle?: string }) {
         <div className="mt-5 flex items-center gap-5 text-[13px]">
           <span><strong className="text-[15px]">{profile.stats.followers.toLocaleString()}</strong><span className="ml-1.5 text-[var(--muted)]">Followers</span></span>
           <span><strong className="text-[15px]">{profile.stats.following.toLocaleString()}</strong><span className="ml-1.5 text-[var(--muted)]">Following</span></span>
-          {isOwnProfile ? <>
-            <button type="button" onClick={() => setEditing(true)} className="ml-auto inline-flex h-9 min-w-[86px] items-center justify-center rounded-xl bg-white/[0.06] px-5 text-sm font-semibold text-white">Edit profile</button>
-            <button type="button" onClick={() => void signOut()} className="inline-flex h-9 items-center justify-center px-1 text-xs text-[var(--muted)] hover:text-white">Sign out</button>
-          </> : null}
         </div>
       </section>
 
@@ -316,8 +445,56 @@ export default function ProfilePage({ handle }: { handle?: string }) {
       {tab === "posts" && (
         <section>
           {profile.posts.length ? profile.posts.map((post) => (
-            <PostCard key={post.id} post={post} />
-          )) : <EmptyState title="No posts yet" detail="Your updates will show up here when you publish." action={<Link href="/create" className="text-[var(--blue)]">Write your first post</Link>} />}
+            <PostCard
+              key={`${post.id}-${post.repostInfo ? "repost" : "post"}`}
+              post={post}
+              actions={
+                <div className="mt-1 flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <button type="button" aria-label={post.likedByMe ? "Unlike post" : "Like post"} aria-pressed={post.likedByMe} onClick={() => void togglePostLike(post)} className={`post-action ${post.likedByMe ? "post-action-liked" : ""}`}>
+                      <Heart size={18} fill={post.likedByMe ? "currentColor" : "none"} /><span>{post.likes}</span>
+                    </button>
+                    <button type="button" aria-label="Show comments" aria-expanded={openComments === post.id} onClick={() => void togglePostComments(post.id)} className="post-action">
+                      <MessageCircle size={18} /><span>{post.comments}</span>
+                    </button>
+                    <button type="button" aria-label={post.repostedByMe ? "Undo repost" : "Repost"} aria-pressed={post.repostedByMe} onClick={() => void togglePostRepost(post)} className={`post-action ${post.repostedByMe ? "text-[var(--blue)]" : ""}`}>
+                      <Repeat2 size={18} /><span>{post.reposts}</span>
+                    </button>
+                  </div>
+                  <button type="button" aria-label="Share post" title="Share" onClick={() => void navigator.clipboard?.writeText(window.location.origin + `/profile?post=${post.id}`)} className="post-action">
+                    <Share2 size={17} />
+                  </button>
+                </div>
+              }
+              repostComposer={repostComposerPost === post.id && (
+                <form className="mt-3 border-t hairline pt-3" onSubmit={(event) => { event.preventDefault(); void submitPostRepost(post); }}>
+                  <label className="block text-xs text-[var(--muted)]" htmlFor={`profile-repost-thoughts-${post.id}`}>Add your thoughts <span>(optional)</span></label>
+                  <textarea id={`profile-repost-thoughts-${post.id}`} value={repostDraft} onChange={(event) => setRepostDraft(event.target.value)} maxLength={500} rows={2} placeholder="What do you think about this?" className="mt-2 w-full resize-y bg-transparent text-sm text-white outline-none placeholder:text-[#77716b]" />
+                  <div className="mt-2 flex justify-end gap-2">
+                    <button type="button" onClick={() => setRepostComposerPost(null)} className="min-h-8 px-3 text-xs text-[var(--muted)]">Cancel</button>
+                    <button type="submit" className="min-h-8 rounded-full bg-[var(--blue)] px-4 text-xs font-semibold text-white">Repost</button>
+                  </div>
+                </form>
+              )}
+              comments={openComments === post.id && (
+                <div className="mt-2 border-t hairline pt-3">
+                  <div className="space-y-3">
+                    {post.commentsPreview.map((comment) => (
+                      <div key={comment.id} className="text-xs">
+                        <span className="font-semibold">{comment.author}</span>
+                        <span className="ml-2 text-[var(--muted)]">{comment.body}</span>
+                      </div>
+                    ))}
+                    {post.commentsPreview.length === 0 && <p className="text-xs text-[var(--muted)]">No comments yet.</p>}
+                  </div>
+                  <form className="mt-3 flex gap-2" onSubmit={(event) => { event.preventDefault(); void submitPostComment(post.id); }}>
+                    <input aria-label="Write a comment" value={commentDraft} onChange={(event) => setCommentDraft(event.target.value)} maxLength={1000} placeholder="Write a reply" className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-[#77716b]" />
+                    <button disabled={!commentDraft.trim()} className="text-xs font-semibold text-[var(--blue)] disabled:opacity-40">Reply</button>
+                  </form>
+                </div>
+              )}
+            />
+          )) : <EmptyState title="No posts or reposts yet" detail="Updates and reposts will show up here when you share them." action={isOwnProfile ? <Link href="/create" className="text-[var(--blue)]">Write your first post</Link> : null} />}
         </section>
       )}
 

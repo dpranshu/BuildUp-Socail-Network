@@ -48,7 +48,7 @@ export async function POST(request: Request) {
     const { data, error } = await supabase
       .from("posts")
       .insert({ author_id: user.id, body: postBody, tags, media_urls: mediaUrls, media_type: mediaType })
-      .select("id,author_id,body,tags,media_urls,media_type,likes_count,comments_count,reposts_count,created_at,author:profiles!posts_author_id_fkey(display_name,handle,avatar_url,is_verified)")
+      .select("id,author_id,body,tags,media_urls,media_type,likes_count,comments_count,reposts_count,created_at,author:profiles!posts_author_id_fkey(display_name,handle,bio,avatar_url,is_verified)")
       .single();
 
     if (error) {
@@ -60,6 +60,7 @@ export async function POST(request: Request) {
       authorId: data.author_id,
       author: data.author?.display_name ?? "Creator",
       handle: data.author?.handle ?? "@creator",
+      authorBio: data.author?.bio ?? "",
       avatarUrl: data.author?.avatar_url ?? null,
       isVerified: data.author?.is_verified ?? false,
       body: data.body,

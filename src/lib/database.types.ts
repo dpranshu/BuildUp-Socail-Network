@@ -24,10 +24,22 @@ export type Database = {
         Relationships: [Relation<"shipped_projects_owner_id_fkey", ["owner_id"], "profiles">];
       };
       posts: {
-        Row: { id: string; author_id: string; body: string; tags: string[]; media_urls: string[]; media_type: "image" | "video" | "text"; likes_count: number; comments_count: number; reposts_count: number; created_at: string };
-        Insert: { id?: string; author_id: string; body: string; tags?: string[]; media_urls?: string[]; media_type?: "image" | "video" | "text"; likes_count?: number; comments_count?: number; reposts_count?: number; created_at?: string };
-        Update: { id?: string; author_id?: string; body?: string; tags?: string[]; media_urls?: string[]; media_type?: "image" | "video" | "text"; likes_count?: number; comments_count?: number; reposts_count?: number; created_at?: string };
+        Row: { id: string; author_id: string; body: string; tags: string[]; media_urls: string[]; media_type: "image" | "video" | "text"; likes_count: number; comments_count: number; reposts_count: number; created_at: string; deleted_at: string | null };
+        Insert: { id?: string; author_id: string; body: string; tags?: string[]; media_urls?: string[]; media_type?: "image" | "video" | "text"; likes_count?: number; comments_count?: number; reposts_count?: number; created_at?: string; deleted_at?: string | null };
+        Update: { id?: string; author_id?: string; body?: string; tags?: string[]; media_urls?: string[]; media_type?: "image" | "video" | "text"; likes_count?: number; comments_count?: number; reposts_count?: number; created_at?: string; deleted_at?: string | null };
         Relationships: [Relation<"posts_author_id_fkey", ["author_id"], "profiles">];
+      };
+      post_reports: {
+        Row: { id: string; post_id: string; reporter_id: string; reason: string; details: string | null; created_at: string };
+        Insert: { id?: string; post_id: string; reporter_id: string; reason?: string; details?: string | null; created_at?: string };
+        Update: { id?: string; post_id?: string; reporter_id?: string; reason?: string; details?: string | null; created_at?: string };
+        Relationships: [Relation<"post_reports_post_id_fkey", ["post_id"], "posts">, Relation<"post_reports_reporter_id_fkey", ["reporter_id"], "profiles">];
+      };
+      hidden_posts: {
+        Row: { user_id: string; post_id: string; created_at: string };
+        Insert: { user_id: string; post_id: string; created_at?: string };
+        Update: { user_id?: string; post_id?: string; created_at?: string };
+        Relationships: [Relation<"hidden_posts_user_id_fkey", ["user_id"], "profiles">, Relation<"hidden_posts_post_id_fkey", ["post_id"], "posts">];
       };
       likes: {
         Row: { id: string; post_id: string; user_id: string; created_at: string };
@@ -42,9 +54,9 @@ export type Database = {
         Relationships: [Relation<"comments_post_id_fkey", ["post_id"], "posts">, Relation<"comments_author_id_fkey", ["author_id"], "profiles">];
       };
       reposts: {
-        Row: { id: string; post_id: string; user_id: string; created_at: string };
-        Insert: { id?: string; post_id: string; user_id: string; created_at?: string };
-        Update: { id?: string; post_id?: string; user_id?: string; created_at?: string };
+        Row: { id: string; post_id: string; user_id: string; thoughts: string; created_at: string };
+        Insert: { id?: string; post_id: string; user_id: string; thoughts?: string; created_at?: string };
+        Update: { id?: string; post_id?: string; user_id?: string; thoughts?: string; created_at?: string };
         Relationships: [Relation<"reposts_post_id_fkey", ["post_id"], "posts">, Relation<"reposts_user_id_fkey", ["user_id"], "profiles">];
       };
       follows: {
@@ -52,6 +64,12 @@ export type Database = {
         Insert: { id?: string; follower_id: string; following_id: string; created_at?: string };
         Update: { id?: string; follower_id?: string; following_id?: string; created_at?: string };
         Relationships: [Relation<"follows_follower_id_fkey", ["follower_id"], "profiles">, Relation<"follows_following_id_fkey", ["following_id"], "profiles">];
+      };
+      user_blocks: {
+        Row: { blocker_id: string; blocked_id: string; created_at: string };
+        Insert: { blocker_id: string; blocked_id: string; created_at?: string };
+        Update: { blocker_id?: string; blocked_id?: string; created_at?: string };
+        Relationships: [Relation<"user_blocks_blocker_id_fkey", ["blocker_id"], "profiles">, Relation<"user_blocks_blocked_id_fkey", ["blocked_id"], "profiles">];
       };
     };
     Views: { [_ in never]: never };

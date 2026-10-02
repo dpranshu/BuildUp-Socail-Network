@@ -20,15 +20,17 @@ export async function GET(request: Request) {
 
   const profileId = profileResult.data.id;
   const isOwnProfile = user?.id === profileId;
-  const [postsCount, postsResult, projectsResult, followerCount, followingCount, followResult] = await Promise.all([
+  const [postsCount, postsResult, projectsResult, followerCount, followingCount, followResult, profileRepostsResult] = await Promise.all([
     supabase
       .from("posts")
       .select("id", { count: "exact", head: true })
-      .eq("author_id", profileId),
+      .eq("author_id", profileId)
+      .is("deleted_at", null),
     supabase
       .from("posts")
       .select("id,author_id,body,tags,media_urls,media_type,likes_count,comments_count,reposts_count,created_at")
       .eq("author_id", profileId)
+      .is("deleted_at", null)
       .order("created_at", { ascending: false })
       .limit(30),
     supabase
@@ -41,15 +43,25 @@ export async function GET(request: Request) {
     user && !isOwnProfile
       ? supabase.from("follows").select("id").eq("follower_id", user.id).eq("following_id", profileId).maybeSingle()
       : Promise.resolve({ data: null, error: null }),
+    supabase.from("reposts").select("id,post_id,thoughts,created_at").eq("user_id", profileId).order("created_at", { ascending: false }).limit(30),
   ]);
 
-  if (postsCount.error || postsResult.error || projectsResult.error || followerCount.error || followingCount.error || followResult.error) {
+  if (postsCount.error || postsResult.error || projectsResult.error || followerCount.error || followingCount.error || followResult.error || profileRepostsResult.error) {
     return NextResponse.json({ message: "Unable to load your profile." }, { status: 500 });
   }
 
   const profile = profileResult.data;
   const avatarUrl = profile.avatar_url ?? (isOwnProfile ? user?.user_metadata.avatar_url ?? user?.user_metadata.picture ?? null : null);
-  const postIds = postsResult.data.map((post) => post.id);
+  const repostedPostIds = profileRepostsResult.data.map((repost) => repost.post_id);
+  const repostedPostsResult = repostedPostIds.length > 0
+    ? await supabase.from("posts")
+        .select("id,author_id,body,tags,media_urls,media_type,likes_count,comments_count,reposts_count,created_at,author:profiles!posts_author_id_fkey(display_name,handle,bio,avatar_url,is_verified)")
+        .in("id", repostedPostIds)
+        .is("deleted_at", null)
+    : { data: [], error: null };
+  if (repostedPostsResult.error) return NextResponse.json({ message: "Unable to load reposts." }, { status: 500 });
+
+  const postIds = [...new Set([...postsResult.data.map((post) => post.id), ...repostedPostsResult.data.map((post) => post.id)])];
   const [likesResult, repostsResult] = user && postIds.length > 0
     ? await Promise.all([
         supabase.from("likes").select("post_id").eq("user_id", user.id).in("post_id", postIds),
@@ -59,6 +71,55 @@ export async function GET(request: Request) {
   if (likesResult.error || repostsResult.error) return NextResponse.json({ message: "Unable to load post reactions." }, { status: 500 });
   const likedIds = new Set((likesResult.data ?? []).map((item) => item.post_id));
   const repostedIds = new Set((repostsResult.data ?? []).map((item) => item.post_id));
+  const sourcePostsById = new Map(repostedPostsResult.data.map((post) => [post.id, post]));
+
+  const profilePosts = postsResult.data.map((post) => ({
+    id: post.id,
+    authorId: post.author_id,
+    author: profile.display_name,
+    handle: profile.handle,
+    authorBio: profile.bio,
+    avatarUrl,
+    isVerified: profile.is_verified,
+    body: post.body,
+    tags: post.tags,
+    mediaUrls: post.media_urls,
+    mediaType: post.media_type,
+    likes: post.likes_count,
+    comments: post.comments_count,
+    reposts: post.reposts_count,
+    createdAt: post.created_at,
+    isMine: user?.id === post.author_id,
+    likedByMe: likedIds.has(post.id),
+    repostedByMe: repostedIds.has(post.id),
+    commentsPreview: [],
+  }));
+  const profileReposts = profileRepostsResult.data.flatMap((repost) => {
+    const post = sourcePostsById.get(repost.post_id);
+    if (!post) return [];
+    return [{
+      id: post.id,
+      authorId: post.author_id,
+      author: post.author?.display_name ?? "Creator",
+      handle: post.author?.handle ?? "@creator",
+      authorBio: post.author?.bio ?? "",
+      avatarUrl: post.author?.avatar_url ?? null,
+      isVerified: post.author?.is_verified ?? false,
+      body: post.body,
+      tags: post.tags,
+      mediaUrls: post.media_urls,
+      mediaType: post.media_type,
+      likes: post.likes_count,
+      comments: post.comments_count,
+      reposts: post.reposts_count,
+      createdAt: repost.created_at,
+      isMine: user?.id === post.author_id,
+      likedByMe: likedIds.has(post.id),
+      repostedByMe: repostedIds.has(post.id),
+      repostInfo: { name: profile.display_name, handle: profile.handle, thoughts: repost.thoughts },
+      commentsPreview: [],
+    }];
+  });
 
   return NextResponse.json({
     profile: {
@@ -84,26 +145,7 @@ export async function GET(request: Request) {
         posts: postsCount.count ?? 0,
         projects: projectsResult.data.length,
       },
-      posts: postsResult.data.map((post) => ({
-        id: post.id,
-        authorId: post.author_id,
-        author: profile.display_name,
-        handle: profile.handle,
-        avatarUrl,
-        isVerified: profile.is_verified,
-        body: post.body,
-        tags: post.tags,
-        mediaUrls: post.media_urls,
-        mediaType: post.media_type,
-        likes: post.likes_count,
-        comments: post.comments_count,
-        reposts: post.reposts_count,
-        createdAt: post.created_at,
-        isMine: user?.id === post.author_id,
-        likedByMe: likedIds.has(post.id),
-        repostedByMe: repostedIds.has(post.id),
-        commentsPreview: [],
-      })),
+      posts: [...profilePosts, ...profileReposts].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 30),
       projects: projectsResult.data.map((project) => ({
         id: project.id,
         title: project.title,
