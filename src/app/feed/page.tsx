@@ -7,6 +7,7 @@ import { Heart, LoaderCircle, MessageCircle, Repeat2, MoreHorizontal } from "luc
 import { AppShell } from "@/components/app-shell";
 import { PostCard } from "@/components/post-card";
 import { SharePostButton } from "@/components/share-post-button";
+import { usePostCountsRealtime } from "@/hooks/use-post-counts-realtime";
 import { getPendingPosts, getServerPendingPosts, removePendingPost, subscribePendingPosts } from "@/lib/pending-posts";
 import type { Comment, Post } from "@/lib/types";
 
@@ -33,6 +34,12 @@ export default function FeedPage() {
   const modeRef = useRef(mode);
   const loading = loadedMode !== mode;
   const persistedPosts = posts.filter((post) => !pendingPosts.some((pending) => pending.post.id === post.id));
+
+  usePostCountsRealtime(persistedPosts.map((post) => post.id), (postId, counts) => {
+    setPosts((current) => current.map((post) => post.id === postId
+      ? { ...post, ...counts }
+      : post));
+  });
 
   useEffect(() => {
     for (const pending of pendingPosts) {
@@ -267,7 +274,11 @@ export default function FeedPage() {
       return;
     }
     setPosts((current) => current.map((post) => post.id === postId
-      ? { ...post, comments: post.comments + 1, commentsPreview: [...post.commentsPreview, data.comment] }
+      ? {
+          ...post,
+          comments: typeof data.comments === "number" ? data.comments : post.comments + 1,
+          commentsPreview: [...post.commentsPreview, data.comment],
+        }
       : post));
     setCommentDraft("");
   }

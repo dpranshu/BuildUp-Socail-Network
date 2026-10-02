@@ -46,10 +46,15 @@ export async function POST(request: Request, { params }: Context) {
       console.error("Unable to add comment:", error.message, error.code);
       return NextResponse.json({ message: "Unable to add comment." }, { status: 500 });
     }
+    const { data: updatedPost, error: countError } = await supabase.from("posts")
+      .select("comments_count")
+      .eq("id", postId)
+      .maybeSingle();
+    if (countError) console.error("Unable to read updated post comment count:", countError.message, countError.code);
     return NextResponse.json({ comment: {
       id: data.id, body: data.body, author: data.author?.display_name ?? "Creator",
       handle: data.author?.handle ?? "@creator", createdAt: data.created_at,
-    } }, { status: 201 });
+    }, comments: updatedPost?.comments_count }, { status: 201 });
   } catch {
     return NextResponse.json({ message: "Invalid comment request." }, { status: 400 });
   }

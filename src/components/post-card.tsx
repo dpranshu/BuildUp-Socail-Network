@@ -71,7 +71,7 @@ export function PostCard({
       {post.tags.length > 0 && <div className="mt-2 flex flex-wrap gap-x-2 text-[12px] text-[var(--blue)]">{post.tags.map((tag) => <span key={`${post.id}-${tag}`}>{tag.startsWith("#") ? tag : `#${tag}`}</span>)}</div>}
       {post.mediaUrls.map((url) => post.mediaType === "video"
         ? <video key={url} className="mt-3 max-h-[520px] w-full bg-black object-contain" controls playsInline preload="none" src={url} />
-        : <Image key={url} src={url} alt="Post attachment" width={1200} height={1200} unoptimized loading="lazy" className="mt-3 aspect-square w-full bg-black object-cover" />)}
+        : <Image key={url} src={url} alt="Post attachment" width={1200} height={1200} unoptimized loading="lazy" className="mt-3 aspect-square w-full rounded-2xl bg-black object-cover" />)}
 
       {actions ?? (
         <div className="mt-1 flex items-center justify-between" aria-label="Post activity">

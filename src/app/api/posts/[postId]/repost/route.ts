@@ -62,5 +62,11 @@ async function setRepost({ postId }: { postId: string }, reposted: boolean, thou
     }
     if (data?.length) reposts = Math.max(0, reposts - data.length);
   }
+  const { data: updatedPost, error: countError } = await supabase.from("posts")
+    .select("reposts_count")
+    .eq("id", postId)
+    .maybeSingle();
+  if (countError) console.error("Unable to read updated post repost count:", countError.message, countError.code);
+  if (updatedPost) reposts = updatedPost.reposts_count;
   return NextResponse.json({ reposted, reposts });
 }

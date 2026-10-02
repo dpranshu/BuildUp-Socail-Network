@@ -6,7 +6,7 @@ The local `.env.local` contains the Supabase project URL and publishable key. Th
 
 The schema migration was applied to the connected Supabase project through MCP. Database types live in `src/lib/database.types.ts` and should be regenerated after schema changes. Authenticated post creation requires column-level `INSERT` privileges for the post fields the API writes, in addition to the `Users create posts as themselves` RLS policy; [`grant_post_insert.sql`](../supabase/migrations/20261002155441_grant_post_insert.sql) configures the narrow grant without allowing clients to set counts or deletion state.
 
-Post interactions require RLS policies on `likes`, `comments`, and `reposts`. Apply [`repost-thoughts.sql`](./repost-thoughts.sql) in the Supabase SQL Editor to enable public reads, allow signed-in users to like, comment on, and repost any visible post, and restrict write actions to the signed-in user. Reposts also store optional thoughts in `public.reposts.thoughts`.
+Post interactions require RLS policies on `likes`, `comments`, and `reposts`. Apply [`repost-thoughts.sql`](./repost-thoughts.sql) in the Supabase SQL Editor to enable public reads, allow signed-in users to like, comment on, and repost any visible post, and restrict write actions to the signed-in user. Reposts also store optional thoughts in `public.reposts.thoughts`. Database triggers maintain `posts.likes_count`, `posts.comments_count`, and `posts.reposts_count`; the `posts` table is in the `supabase_realtime` publication so open feeds and profiles receive updated counts immediately.
 
 The `authenticated` role has `UPDATE` permission on `public.profiles`; the `Users update their own profile` RLS policy still limits updates to the signed-in user's own row.
 

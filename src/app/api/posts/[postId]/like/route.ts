@@ -29,5 +29,13 @@ async function setLike({ postId }: { postId: string }, liked: boolean) {
     console.error("Unable to update like:", result.error.message, result.error.code);
     return NextResponse.json({ message: "Unable to update like." }, { status: 500 });
   }
-  return NextResponse.json({ liked, likes: post.likes_count });
+  const { data: updatedPost, error: countError } = await supabase.from("posts")
+    .select("likes_count")
+    .eq("id", postId)
+    .maybeSingle();
+  if (countError) console.error("Unable to read updated post like count:", countError.message, countError.code);
+  return NextResponse.json({
+    liked,
+    likes: updatedPost?.likes_count ?? Math.max(0, post.likes_count + (liked ? 1 : -1)),
+  });
 }

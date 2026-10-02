@@ -7,6 +7,7 @@ import { AppShell } from "@/components/app-shell";
 import { ProfileAvatar } from "@/components/profile-avatar";
 import { PostCard } from "@/components/post-card";
 import { SharePostButton } from "@/components/share-post-button";
+import { usePostCountsRealtime } from "@/hooks/use-post-counts-realtime";
 import type { Comment, Post, Profile, Project } from "@/lib/types";
 import { BadgeCheck, Cake, Camera, ExternalLink, Heart, LoaderCircle, MapPin, MessageCircle, MoreHorizontal, Pencil, Plus, Repeat2, Ruler, X } from "lucide-react";
 
@@ -152,6 +153,15 @@ export default function ProfilePage({ handle }: { handle?: string }) {
   }, [profile?.posts]);
 
   const isOwnProfile = Boolean(profile?.isOwnProfile);
+
+  usePostCountsRealtime(profile?.posts.map((post) => post.id) ?? [], (postId, counts) => {
+    setProfile((current) => current ? {
+      ...current,
+      posts: current.posts.map((post) => post.id === postId
+        ? { ...post, ...counts }
+        : post),
+    } : current);
+  });
 
   function openConnections(type: ConnectionsType) {
     setConnectionsType(type);
@@ -369,7 +379,11 @@ export default function ProfilePage({ handle }: { handle?: string }) {
       setProfile((current) => current ? {
         ...current,
         posts: current.posts.map((post) => post.id === postId
-          ? { ...post, comments: post.comments + 1, commentsPreview: [...post.commentsPreview, data.comment] }
+          ? {
+              ...post,
+              comments: typeof data.comments === "number" ? data.comments : post.comments + 1,
+              commentsPreview: [...post.commentsPreview, data.comment],
+            }
           : post),
       } : current);
       setCommentDraft("");
