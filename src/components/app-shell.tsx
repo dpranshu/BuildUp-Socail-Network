@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
-import { Bell, House, LogOut, MessageCircle, Plus, Search, Settings } from "lucide-react";
+import { Ban, Bell, House, LogOut, MessageCircle, Plus, Search, Settings } from "lucide-react";
 import { ProfileAvatar } from "@/components/profile-avatar";
 
 const navItems = [
@@ -29,6 +29,28 @@ export function AppShell({
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
   const [signOutError, setSignOutError] = useState("");
+  const [hiddenChromePathname, setHiddenChromePathname] = useState<string | null>(null);
+
+  useEffect(() => {
+    let previousScrollY = window.scrollY;
+
+    function handleScroll() {
+      const currentScrollY = Math.max(0, window.scrollY);
+      const scrollDelta = currentScrollY - previousScrollY;
+
+      if (currentScrollY < 72) {
+        setHiddenChromePathname(null);
+      } else if (scrollDelta > 4) {
+        setHiddenChromePathname(pathname);
+      } else if (scrollDelta < -4) {
+        setHiddenChromePathname(null);
+      }
+      previousScrollY = currentScrollY;
+    }
+
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, [pathname]);
 
   useEffect(() => {
     let active = true;
@@ -74,7 +96,7 @@ export function AppShell({
   }
 
   return (
-    <div className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">
+    <div className={`app-shell min-h-screen bg-[var(--background)] text-[var(--foreground)] ${hiddenChromePathname === pathname ? "chrome-hidden" : ""}`}>
       <header className="app-header sticky top-0 z-40">
         <div className="relative mx-auto flex h-[72px] max-w-[420px] items-center justify-center border-b border-white/[0.07] px-4">
           <Link
@@ -115,6 +137,15 @@ export function AppShell({
               </button>
               {settingsOpen && (
                 <div role="menu" className="absolute right-0 top-11 z-50 min-w-44 overflow-hidden rounded-md border hairline bg-[var(--surface)] p-1 shadow-xl">
+                  <Link
+                    href="/settings/blocked"
+                    role="menuitem"
+                    onClick={() => setSettingsOpen(false)}
+                    className="flex min-h-10 w-full items-center gap-2 rounded px-3 text-left text-sm text-white hover:bg-white/[0.06]"
+                  >
+                    <Ban size={16} />
+                    Blocked users
+                  </Link>
                   <button
                     type="button"
                     role="menuitem"
@@ -136,7 +167,7 @@ export function AppShell({
         <div className="sr-only">{title}</div>
         {children}
       </main>
-      <nav aria-label="Primary" className="mobile-nav fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t border-white/[0.08] bg-[#0d0f11]">
+      <nav aria-label="Primary" className="primary-nav mobile-nav fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t border-white/[0.08] bg-[#0d0f11]">
         {navItems.map(({ href, label, icon: Icon }) => (
           <Link
             key={href + label}

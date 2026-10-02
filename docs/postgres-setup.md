@@ -12,9 +12,21 @@ The `authenticated` role has `UPDATE` permission on `public.profiles`; the `User
 
 Profile photos use the public `avatars` Storage bucket. Authenticated uploads are limited to each user's own folder and to JPEG, PNG, or WebP images up to 5 MB. The profile's `avatar_url` stores the public URL used by the profile page and top bar.
 
-Post moderation uses `post_reports`, `user_blocks`, and `hidden_posts`. All three tables have RLS enabled; users can create and view only their own blocks and hidden posts, and can submit reports tied to their own user ID. The feed excludes posts from blocked authors and posts marked not interested.
+Post moderation uses `post_reports`, `user_blocks`, and `hidden_posts`. All three tables have RLS enabled; users can create and view only their own blocks and hidden posts, and can submit reports tied to their own user ID. Signed-in users can review and unblock accounts from **Profile > Settings > Blocked users**. The `user_blocks` table also needs a delete policy allowing a user to delete only rows where `blocker_id = auth.uid()`; if that policy is not already present, apply this in the Supabase SQL Editor:
+
+```sql
+create policy "Users can unblock their own users"
+on public.user_blocks
+for delete
+to authenticated
+using ((select auth.uid()) = blocker_id);
+```
+
+The feed excludes posts from blocked authors and posts marked not interested.
 
 Post deletion is a soft delete: the author's `deleted_at` timestamp is set, public reads and app queries hide the post, and its row and related records remain in the database. Authenticated clients have no physical `DELETE` permission on `public.posts`.
+
+Feed loading uses keyset pagination: six posts on initial load and up to ten more near the bottom of the feed. Profile posts load before the overview and projects data. Post images are lazy-loaded and videos are not fetched until playback. For large datasets, check the existing indexes and use `EXPLAIN (ANALYZE, BUFFERS)` before adding indexes; likely candidates for this query shape are `posts(created_at, id)` for visible posts, `posts(author_id, created_at, id)` for profile timelines, and owner-leading indexes on `follows`, `user_blocks`, and `hidden_posts`. Avoid duplicate indexes and apply any needed indexes through a reviewed migration.
 
 Start the app with:
 

@@ -56,6 +56,7 @@ export type Profile = {
   avatarUrl: string | null;
   isVerified: boolean;
   isOwnProfile: boolean;
+  isAuthenticated: boolean;
   skills: string[];
   interests: string[];
   createdAt: string;

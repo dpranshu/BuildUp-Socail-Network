@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Heart, MessageCircle, Repeat2, Share2, MoreHorizontal } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
@@ -9,6 +9,7 @@ import { PostCard } from "@/components/post-card";
 import type { Comment, Post } from "@/lib/types";
 
 type FeedMode = "for-you" | "following" | "latest";
+type FeedCursor = { createdAt: string; id: string };
 
 export default function FeedPage() {
   const router = useRouter();
@@ -21,20 +22,83 @@ export default function FeedPage() {
   const [repostDraft, setRepostDraft] = useState("");
   const [notice, setNotice] = useState("");
   const [loadedMode, setLoadedMode] = useState<FeedMode | null>(null);
+  const [nextCursor, setNextCursor] = useState<FeedCursor | null>(null);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const loadMoreRef = useRef(false);
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
+  const modeRef = useRef(mode);
   const loading = loadedMode !== mode;
 
   useEffect(() => {
     let active = true;
-    fetch(`/api/feed?mode=${mode}`)
+    modeRef.current = mode;
+    const params = new URLSearchParams({ mode, page_size: "6" });
+    fetch(`/api/feed?${params}`)
       .then(async (res) => {
         const data = await res.json();
         if (!res.ok) throw new Error(data.message ?? "Unable to load feed.");
-        if (active) setPosts(data.posts ?? []);
+        if (active) {
+          setNotice("");
+          setPosts(data.posts ?? []);
+          setNextCursor(data.nextCursor ?? null);
+          setHasMore(Boolean(data.hasMore));
+        }
       })
-      .catch(() => { if (active) setPosts([]); })
+      .catch((error: unknown) => {
+        if (active) {
+          setPosts([]);
+          setNextCursor(null);
+          setHasMore(false);
+          setNotice(error instanceof Error ? error.message : "Unable to load feed.");
+        }
+      })
       .finally(() => { if (active) setLoadedMode(mode); });
     return () => { active = false; };
   }, [mode]);
+
+  const loadMorePosts = useCallback(async () => {
+    if (!hasMore || !nextCursor || loading || loadMoreRef.current) return;
+    loadMoreRef.current = true;
+    setLoadingMore(true);
+    const requestMode = mode;
+    const params = new URLSearchParams({
+      mode: requestMode,
+      page_size: "10",
+      before: nextCursor.createdAt,
+      before_id: nextCursor.id,
+    });
+    try {
+      const response = await fetch(`/api/feed?${params}`);
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.message ?? "Unable to load more posts.");
+      if (modeRef.current === requestMode) {
+        setPosts((current) => [...current, ...(data.posts ?? [])]);
+        setNextCursor(data.nextCursor ?? null);
+        setHasMore(Boolean(data.hasMore));
+      }
+    } catch (error) {
+      if (modeRef.current === requestMode) {
+        setNotice(error instanceof Error ? error.message : "Unable to load more posts.");
+      }
+    } finally {
+      loadMoreRef.current = false;
+      setLoadingMore(false);
+    }
+  }, [hasMore, loading, mode, nextCursor]);
+
+  useEffect(() => {
+    const sentinel = sentinelRef.current;
+    if (!sentinel || loading || !hasMore) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) void loadMorePosts();
+      },
+      { rootMargin: "600px 0px" },
+    );
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [hasMore, loadMorePosts, loading]);
 
   async function toggleLike(post: Post) {
     setNotice("");
@@ -201,7 +265,7 @@ export default function FeedPage() {
 
       {notice && <p role="status" className="border-b hairline px-5 py-2 text-xs text-amber-300">{notice}</p>}
       <div>
-        {posts.map((post) => (
+        {!loading && posts.map((post) => (
           <PostCard
             key={post.id}
             post={post}
@@ -259,6 +323,8 @@ export default function FeedPage() {
           </div>
         )}
         {loading && <div className="space-y-3 px-4 py-5" aria-label="Loading feed"><div className="h-4 w-2/5 animate-pulse rounded bg-white/10" /><div className="h-20 animate-pulse rounded bg-white/[0.04]" /></div>}
+        {hasMore && <div ref={sentinelRef} aria-hidden="true" className="h-1" />}
+        {loadingMore && <div className="px-4 py-5 text-center text-xs text-[var(--muted)]" role="status">Loading more posts…</div>}
       </div>
     </AppShell>
   );

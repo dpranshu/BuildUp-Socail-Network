@@ -7,6 +7,7 @@ import type { Post } from "@/lib/types";
 
 export function PostCard({
   post,
+  id,
   headerActions,
   toolbar,
   actions,
@@ -14,6 +15,7 @@ export function PostCard({
   comments,
 }: {
   post: Post;
+  id?: string;
   headerActions?: ReactNode;
   toolbar?: ReactNode;
   actions?: ReactNode;
@@ -21,7 +23,7 @@ export function PostCard({
   comments?: ReactNode;
 }) {
   return (
-    <article className="relative mx-auto w-full max-w-[420px] border-b hairline px-4 py-3">
+    <article id={id} className="relative mx-auto w-full max-w-[420px] border-b hairline px-4 py-3">
       {post.repostInfo && (
         <p className="mb-2 flex items-center gap-1.5 text-xs text-[var(--muted)]">
           <Repeat2 size={14} />
@@ -60,8 +62,8 @@ export function PostCard({
       <p className="mt-2 whitespace-pre-wrap text-[14px] leading-[1.55] text-[#eeeae5]">{post.body}</p>
       {post.tags.length > 0 && <div className="mt-2 flex flex-wrap gap-x-2 text-[12px] text-[var(--blue)]">{post.tags.map((tag) => <span key={`${post.id}-${tag}`}>{tag.startsWith("#") ? tag : `#${tag}`}</span>)}</div>}
       {post.mediaUrls.map((url) => post.mediaType === "video"
-        ? <video key={url} className="mt-3 max-h-[520px] w-full bg-black object-contain" controls playsInline src={url} />
-        : <Image key={url} src={url} alt="Post attachment" width={1200} height={900} unoptimized className="mt-3 max-h-[520px] w-full bg-black object-cover" />)}
+        ? <video key={url} className="mt-3 max-h-[520px] w-full bg-black object-contain" controls playsInline preload="none" src={url} />
+        : <Image key={url} src={url} alt="Post attachment" width={1200} height={900} unoptimized loading="lazy" className="mt-3 max-h-[520px] w-full bg-black object-cover" />)}
 
       {actions ?? (
         <div className="mt-1 flex items-center justify-between" aria-label="Post activity">

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AppShell } from "@/components/app-shell";
@@ -10,13 +10,35 @@ import type { Comment, Post, Profile, Project } from "@/lib/types";
 import { BadgeCheck, Cake, Camera, ExternalLink, Heart, LoaderCircle, MapPin, MessageCircle, Pencil, Plus, Repeat2, Ruler, Share2, X } from "lucide-react";
 
 type ProfileTab = "posts" | "overview" | "projects";
+type ConnectionsType = "followers" | "following";
+type ConnectionPerson = {
+  id: string;
+  name: string;
+  handle: string;
+  avatarUrl: string | null;
+  isVerified: boolean;
+  isFollowing: boolean;
+  isCurrentUser: boolean;
+};
+type ConnectionsCursor = { createdAt: string; id: string };
 const pronounChoices = ["he/him", "she/her", "they/them", "any pronouns", "prefer not to say"];
 
 export default function ProfilePage({ handle }: { handle?: string }) {
   const router = useRouter();
   const [profile, setProfile] = useState<Profile | null>(null);
+  const [loadedHandle, setLoadedHandle] = useState<string | undefined>();
+  const [detailsLoaded, setDetailsLoaded] = useState(false);
   const [signedOut, setSignedOut] = useState(false);
   const [tab, setTab] = useState<ProfileTab>("posts");
+  const [connectionsType, setConnectionsType] = useState<ConnectionsType | null>(null);
+  const [connections, setConnections] = useState<ConnectionPerson[]>([]);
+  const [connectionsCursor, setConnectionsCursor] = useState<ConnectionsCursor | null>(null);
+  const [hasMoreConnections, setHasMoreConnections] = useState(false);
+  const [loadingConnections, setLoadingConnections] = useState(false);
+  const [updatingFollowId, setUpdatingFollowId] = useState<string | null>(null);
+  const [updatingProfileFollow, setUpdatingProfileFollow] = useState(false);
+  const profileFollowInFlight = useRef(false);
+  const [connectionsMessage, setConnectionsMessage] = useState("");
   const [editing, setEditing] = useState(false);
   const [addingProject, setAddingProject] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -30,26 +52,189 @@ export default function ProfilePage({ handle }: { handle?: string }) {
   const [repostDraft, setRepostDraft] = useState("");
 
   useEffect(() => {
-    fetch(`/api/profile${handle ? `?handle=${encodeURIComponent(handle)}` : ""}`)
+    if (!connectionsType || !profile?.id) return;
+    let active = true;
+    const params = new URLSearchParams({ type: connectionsType });
+
+    fetch(`/api/profiles/${encodeURIComponent(profile.id)}/connections?${params}`)
       .then(async (response) => {
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.message ?? "Unable to load connections.");
+        if (active) {
+          setConnections(data.people ?? []);
+          setConnectionsCursor(data.nextCursor ?? null);
+          setHasMoreConnections(Boolean(data.hasMore));
+        }
+      })
+      .catch((error: unknown) => {
+        if (active) {
+          setConnectionsMessage(error instanceof Error ? error.message : "Unable to load connections.");
+        }
+      })
+      .finally(() => {
+        if (active) setLoadingConnections(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [connectionsType, profile?.id]);
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadProfile() {
+      try {
+        const query = new URLSearchParams({ section: "posts" });
+        if (handle) query.set("handle", handle);
+        const detailsQuery = new URLSearchParams({ section: "details" });
+        if (handle) detailsQuery.set("handle", handle);
+        const detailsRequest = fetch(`/api/profile?${detailsQuery}`)
+          .then(async (detailsResponse) => {
+            const detailsData = await detailsResponse.json();
+            if (!detailsResponse.ok) throw new Error(detailsData.message ?? "Could not load profile details.");
+            return { data: detailsData, error: null };
+          })
+          .catch((error: unknown) => {
+            return {
+              data: null,
+              error: error instanceof Error ? error.message : "Could not load profile details.",
+            };
+          });
+        const response = await fetch(`/api/profile?${query}`);
         if (response.status === 401) {
-          setSignedOut(true);
+          if (active) setSignedOut(true);
           return;
         }
         const data = await response.json();
-        if (!response.ok) throw new Error(data.message);
+        if (!response.ok) throw new Error(data.message ?? "Could not load profile.");
+        if (!active) return;
+
+        setMessage("");
+        setDetailsLoaded(false);
+        setSignedOut(false);
         setProfile(data.profile ?? null);
+        setLoadedHandle(handle);
         if (data.profile) {
           const savedPronouns = String(data.profile.pronouns ?? "").trim();
           const matchingChoice = pronounChoices.find((choice) => choice === savedPronouns.toLowerCase());
           setPronounChoice(matchingChoice ?? (savedPronouns ? "other" : "he/him"));
           setCustomPronouns(matchingChoice ? "" : savedPronouns);
         }
-      })
-      .catch(() => setMessage("Could not load profile. Try refreshing."));
+
+        const detailsResult = await detailsRequest;
+        if (active && detailsResult.data) {
+          setProfile((current) => current ? {
+            ...current,
+            ...detailsResult.data.details,
+          } : current);
+          setDetailsLoaded(true);
+        } else if (active && detailsResult.error) {
+          setMessage(detailsResult.error);
+        }
+      } catch (error) {
+        if (active) setMessage(error instanceof Error ? error.message : "Could not load profile.");
+      }
+    }
+
+    void loadProfile();
+    return () => {
+      active = false;
+    };
   }, [handle]);
 
+  useEffect(() => {
+    const postId = new URLSearchParams(window.location.search).get("post");
+    if (!postId || !profile?.posts.some((post) => post.id === postId)) return;
+    document.getElementById(`post-${postId}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [profile?.posts]);
+
   const isOwnProfile = Boolean(profile?.isOwnProfile);
+
+  function openConnections(type: ConnectionsType) {
+    setConnectionsType(type);
+    setConnections([]);
+    setConnectionsCursor(null);
+    setHasMoreConnections(false);
+    setConnectionsMessage("");
+    setLoadingConnections(true);
+  }
+
+  async function loadMoreConnections() {
+    if (!profile || !connectionsType || !connectionsCursor || loadingConnections) return;
+    setLoadingConnections(true);
+    setConnectionsMessage("");
+    const params = new URLSearchParams({
+      type: connectionsType,
+      before: connectionsCursor.createdAt,
+      before_id: connectionsCursor.id,
+    });
+    try {
+      const response = await fetch(`/api/profiles/${encodeURIComponent(profile.id)}/connections?${params}`);
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.message ?? "Unable to load more connections.");
+      setConnections((current) => [...current, ...(data.people ?? [])]);
+      setConnectionsCursor(data.nextCursor ?? null);
+      setHasMoreConnections(Boolean(data.hasMore));
+    } catch (error) {
+      setConnectionsMessage(error instanceof Error ? error.message : "Unable to load more connections.");
+    } finally {
+      setLoadingConnections(false);
+    }
+  }
+
+  async function toggleConnectionFollow(person: ConnectionPerson) {
+    if (updatingFollowId) return;
+    const following = !person.isFollowing;
+    const followingDelta = following ? 1 : -1;
+    setConnectionsMessage("");
+    setUpdatingFollowId(person.id);
+    setConnections((current) => current.map((item) =>
+      item.id === person.id ? { ...item, isFollowing: following } : item
+    ));
+    if (isOwnProfile) {
+      setProfile((current) => current ? {
+        ...current,
+        stats: { ...current.stats, following: Math.max(0, current.stats.following + followingDelta) },
+      } : current);
+    }
+
+    try {
+      const response = await fetch("/api/follows", {
+        method: following ? "POST" : "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ profileId: person.id }),
+      });
+      const data = await response.json();
+      if (response.status === 401) {
+        setConnections((current) => current.map((item) =>
+          item.id === person.id ? { ...item, isFollowing: person.isFollowing } : item
+        ));
+        if (isOwnProfile) {
+          setProfile((current) => current ? {
+            ...current,
+            stats: { ...current.stats, following: Math.max(0, current.stats.following - followingDelta) },
+          } : current);
+        }
+        router.push("/login");
+        return;
+      }
+      if (!response.ok) throw new Error(data.message ?? "Unable to update follow.");
+    } catch (error) {
+      setConnections((current) => current.map((item) =>
+        item.id === person.id ? { ...item, isFollowing: person.isFollowing } : item
+      ));
+      if (isOwnProfile) {
+        setProfile((current) => current ? {
+          ...current,
+          stats: { ...current.stats, following: Math.max(0, current.stats.following - followingDelta) },
+        } : current);
+      }
+      setConnectionsMessage(error instanceof Error ? error.message : "Unable to update follow.");
+    } finally {
+      setUpdatingFollowId(null);
+    }
+  }
 
   async function togglePostLike(post: Post) {
     if (!profile) return;
@@ -191,27 +376,77 @@ export default function ProfilePage({ handle }: { handle?: string }) {
   }
 
   async function toggleFollow() {
-    if (!profile) return;
+    if (!profile || profileFollowInFlight.current) return;
+    if (!profile.isAuthenticated) {
+      router.push("/login");
+      return;
+    }
+    if (!detailsLoaded) return;
+    profileFollowInFlight.current = true;
+    setUpdatingProfileFollow(true);
     const following = !profile.isFollowing;
-    setProfile({
-      ...profile,
+    const followerDelta = following ? 1 : -1;
+    setMessage("");
+    setProfile((current) => current ? {
+      ...current,
       isFollowing: following,
-      stats: { ...profile.stats, followers: Math.max(0, profile.stats.followers + (following ? 1 : -1)) },
-    });
+      stats: { ...current.stats, followers: Math.max(0, current.stats.followers + followerDelta) },
+    } : current);
     try {
       const response = await fetch("/api/follows", {
         method: following ? "POST" : "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ profileId: profile.id }),
       });
+      const data = await response.json();
       if (response.status === 401) {
+        setProfile((current) => current ? {
+          ...current,
+          isFollowing: !following,
+          stats: { ...current.stats, followers: Math.max(0, current.stats.followers - followerDelta) },
+        } : current);
         router.push("/login");
         return;
       }
-      if (!response.ok) throw new Error("Unable to update follow.");
-    } catch {
-      setProfile(profile);
-      setMessage("Could not update follow. Try again.");
+      if (!response.ok) throw new Error(data.message ?? "Unable to update follow.");
+      if (data.following !== following) throw new Error("The follow change was not confirmed. Please try again.");
+    } catch (error) {
+      setProfile((current) => current ? {
+        ...current,
+        isFollowing: !following,
+        stats: { ...current.stats, followers: Math.max(0, current.stats.followers - followerDelta) },
+      } : current);
+      setMessage(error instanceof Error ? error.message : "Could not update follow. Try again.");
+    } finally {
+      profileFollowInFlight.current = false;
+      setUpdatingProfileFollow(false);
+    }
+  }
+
+  async function sharePost(post: Post) {
+    const url = new URL(`/creator/${encodeURIComponent(post.handle)}`, window.location.origin);
+    url.searchParams.set("post", post.id);
+    const shareData = { title: `${post.author} on Buildup`, text: post.body.slice(0, 180), url: url.toString() };
+    setMessage("");
+
+    if (navigator.share) {
+      try {
+        await navigator.share(shareData);
+        return;
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+      }
+    }
+
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(shareData.url);
+        setMessage("Post link copied.");
+        return;
+      }
+      window.prompt("Copy this post link:", shareData.url);
+    } catch (error) {
+      setMessage(error instanceof Error ? `Could not share post: ${error.message}` : "Could not share post.");
     }
   }
 
@@ -343,7 +578,7 @@ export default function ProfilePage({ handle }: { handle?: string }) {
     );
   }
 
-  if (!profile) {
+  if (!profile || loadedHandle !== handle) {
     return <AppShell title="Profile"><div className="px-5 py-12 text-sm text-[var(--muted)]">{message || "Loading profile…"}</div></AppShell>;
   }
 
@@ -383,7 +618,7 @@ export default function ProfilePage({ handle }: { handle?: string }) {
           )}
           {isOwnProfile
             ? <button type="button" aria-label="Edit profile" title="Edit profile" onClick={() => { setEditing((value) => !value); setMessage(""); }} className="mt-1 flex h-9 w-9 items-center justify-center rounded-xl border hairline bg-white/[0.025] text-[#c8c1b9] hover:bg-white/[0.06]">{editing ? <X size={17} /> : <Pencil size={16} />}</button>
-            : <button type="button" onClick={() => void toggleFollow()} className={`mt-1 inline-flex h-9 min-w-24 items-center justify-center rounded-full px-4 text-sm font-semibold ${profile.isFollowing ? "border hairline bg-white/[0.04] text-white" : "bg-[var(--blue)] text-white"}`}>{profile.isFollowing ? "Following" : "Follow"}</button>}
+            : <button type="button" onClick={() => void toggleFollow()} disabled={updatingProfileFollow || !detailsLoaded} aria-busy={updatingProfileFollow} className={`mt-1 inline-flex h-9 min-w-24 items-center justify-center rounded-full px-4 text-sm font-semibold disabled:cursor-wait disabled:opacity-70 ${profile.isFollowing ? "border hairline bg-white/[0.04] text-white" : "bg-[var(--blue)] text-white"}`}>{updatingProfileFollow ? "Saving…" : !detailsLoaded ? "Loading…" : profile.isFollowing ? "Following" : "Follow"}</button>}
         </div>
         <div className="mt-3 flex items-center gap-2">
           <h1 className="font-display text-[22px] font-semibold">{profile.name}</h1>
@@ -396,10 +631,103 @@ export default function ProfilePage({ handle }: { handle?: string }) {
           {profile.age !== null && <span className="inline-flex items-center gap-1.5"><Cake size={14} className="text-[var(--blue)]" />{profile.age}</span>}
         </div>
         <div className="mt-5 flex items-center gap-5 text-[13px]">
-          <span><strong className="text-[15px]">{profile.stats.followers.toLocaleString()}</strong><span className="ml-1.5 text-[var(--muted)]">Followers</span></span>
-          <span><strong className="text-[15px]">{profile.stats.following.toLocaleString()}</strong><span className="ml-1.5 text-[var(--muted)]">Following</span></span>
+          <button type="button" onClick={() => openConnections("followers")} aria-label={`View ${profile.stats.followers} followers`} className="text-left hover:opacity-80">
+            <strong className="text-[15px]">{profile.stats.followers.toLocaleString()}</strong><span className="ml-1.5 text-[var(--muted)]">Followers</span>
+          </button>
+          <button type="button" onClick={() => openConnections("following")} aria-label={`View ${profile.stats.following} following`} className="text-left hover:opacity-80">
+            <strong className="text-[15px]">{profile.stats.following.toLocaleString()}</strong><span className="ml-1.5 text-[var(--muted)]">Following</span>
+          </button>
         </div>
       </section>
+
+      {connectionsType && (
+        <div
+          className="fixed inset-0 z-[60] flex items-end justify-center bg-black/70 px-3 pb-3 pt-12 sm:items-center"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setConnectionsType(null);
+          }}
+        >
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="connections-title"
+            className="flex max-h-[min(80vh,680px)] w-full max-w-[420px] flex-col overflow-hidden rounded-t-2xl border hairline bg-[var(--surface)] sm:rounded-2xl"
+          >
+            <header className="flex items-center justify-between border-b hairline px-5 py-4">
+              <h2 id="connections-title" className="font-display text-lg font-semibold">
+                {connectionsType === "followers" ? "Followers" : "Following"}
+              </h2>
+              <button
+                type="button"
+                aria-label="Close connections list"
+                onClick={() => setConnectionsType(null)}
+                className="flex h-9 w-9 items-center justify-center rounded-full text-[var(--muted)] hover:bg-white/[0.06] hover:text-white"
+              >
+                <X size={18} />
+              </button>
+            </header>
+
+            {connectionsMessage && <p role="alert" className="border-b hairline px-5 py-3 text-sm text-rose-300">{connectionsMessage}</p>}
+
+            <div className="min-h-0 flex-1 overflow-y-auto">
+              {connections.map((person) => (
+                <div key={person.id} className="flex items-center justify-end gap-3 border-b border-white/[0.06] px-5">
+                  <Link
+                    href={`/creator/${encodeURIComponent(person.handle)}`}
+                    onClick={() => setConnectionsType(null)}
+                    className="flex min-w-0 flex-1 items-center gap-3 py-3"
+                  >
+                    <ProfileAvatar src={person.avatarUrl} alt="" className="h-11 w-11" iconSize={20} />
+                    <span className="min-w-0 flex-1">
+                      <span className="flex items-center gap-1.5 truncate text-sm font-semibold text-white">
+                        {person.name}
+                        {person.isVerified && <BadgeCheck size={14} className="shrink-0 fill-[var(--blue)] text-[var(--blue)]" />}
+                      </span>
+                      <span className="block truncate text-xs text-[var(--muted)]">{person.handle}</span>
+                    </span>
+                  </Link>
+                  {person.isCurrentUser ? (
+                    <span className="shrink-0 rounded-full border hairline px-3 py-2 text-xs font-medium text-[var(--muted)]">
+                      You
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      disabled={updatingFollowId !== null}
+                      onClick={() => void toggleConnectionFollow(person)}
+                      className={`min-h-9 min-w-[92px] rounded-full px-3 text-xs font-semibold disabled:opacity-50 ${
+                        person.isFollowing
+                          ? "border hairline bg-white/[0.04] text-white hover:bg-white/[0.08]"
+                          : "bg-[var(--blue)] text-white hover:brightness-110"
+                      }`}
+                    >
+                      {updatingFollowId === person.id ? "Saving…" : person.isFollowing ? "Unfollow" : "Follow"}
+                    </button>
+                  )}
+                </div>
+              ))}
+
+              {!loadingConnections && !connectionsMessage && connections.length === 0 && (
+                <p className="px-5 py-10 text-center text-sm text-[var(--muted)]">
+                  {connectionsType === "followers" ? "No followers yet." : "Not following anyone yet."}
+                </p>
+              )}
+
+              {loadingConnections && <p role="status" className="px-5 py-4 text-center text-sm text-[var(--muted)]">Loading…</p>}
+
+              {hasMoreConnections && !loadingConnections && (
+                <button
+                  type="button"
+                  onClick={() => void loadMoreConnections()}
+                  className="min-h-11 w-full text-sm font-semibold text-[var(--blue)] hover:bg-white/[0.03]"
+                >
+                  Load more
+                </button>
+              )}
+            </div>
+          </section>
+        </div>
+      )}
 
       <div className="border-b hairline px-3 sm:px-0">
         <div role="tablist" aria-label="Profile sections" className="grid grid-cols-3 gap-2">
@@ -447,6 +775,7 @@ export default function ProfilePage({ handle }: { handle?: string }) {
           {profile.posts.length ? profile.posts.map((post) => (
             <PostCard
               key={`${post.id}-${post.repostInfo ? "repost" : "post"}`}
+              id={`post-${post.id}`}
               post={post}
               actions={
                 <div className="mt-1 flex items-center justify-between">
@@ -461,7 +790,7 @@ export default function ProfilePage({ handle }: { handle?: string }) {
                       <Repeat2 size={18} /><span>{post.reposts}</span>
                     </button>
                   </div>
-                  <button type="button" aria-label="Share post" title="Share" onClick={() => void navigator.clipboard?.writeText(window.location.origin + `/profile?post=${post.id}`)} className="post-action">
+                  <button type="button" aria-label="Share post" title="Share" onClick={() => void sharePost(post)} className="post-action">
                     <Share2 size={17} />
                   </button>
                 </div>
@@ -499,6 +828,9 @@ export default function ProfilePage({ handle }: { handle?: string }) {
       )}
 
       {tab === "overview" && (
+        !detailsLoaded
+          ? <div className="px-5 py-12 text-center text-sm text-[var(--muted)]" role="status">{message || "Loading profile overview…"}</div>
+          :
         <div className="space-y-7 px-5 pb-8 pt-7 sm:px-0">
           <section>
             <h2 className="mb-3 text-sm font-semibold">Backstory</h2>
@@ -530,6 +862,9 @@ export default function ProfilePage({ handle }: { handle?: string }) {
       )}
 
       {tab === "projects" && (
+        !detailsLoaded
+          ? <div className="px-5 py-12 text-center text-sm text-[var(--muted)]" role="status">{message || "Loading shipped projects…"}</div>
+          :
         <section className="px-5 pb-8 pt-6 sm:px-0">
           <div className="mb-4 flex items-center justify-between"><h2 className="text-sm font-semibold">Shipped Projects</h2>{isOwnProfile && <button type="button" onClick={() => { setAddingProject((value) => !value); setMessage(""); }} aria-label="Add project" title="Add project" className="flex h-8 w-8 items-center justify-center rounded-full border hairline text-[var(--blue)]"><Plus size={17} /></button>}</div>
           {addingProject && isOwnProfile && <form onSubmit={addProject} className="mb-5 space-y-3 border hairline bg-white/[0.025] p-4">

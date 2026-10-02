@@ -8,7 +8,7 @@ tags: pagination, cursor, keyset, offset, performance
 ## Use Cursor-Based Pagination Instead of OFFSET
 
 OFFSET-based pagination scans all skipped rows, getting slower on deeper pages. Cursor pagination is O(1).
-
+ 
 **Incorrect (OFFSET pagination):**
 
 ```sql
