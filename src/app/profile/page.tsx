@@ -663,9 +663,17 @@ export default function ProfilePage({ handle }: { handle?: string }) {
           ) : (
             <ProfileAvatar src={profile.avatarUrl} alt={`${profile.name} profile photo`} className="h-20 w-20 text-xl shadow-lg shadow-black/30" iconSize={42} />
           )}
-          {isOwnProfile
-            ? <button type="button" aria-label="Edit profile" title="Edit profile" onClick={() => { setEditing((value) => !value); setMessage(""); }} className="mt-1 flex h-9 w-9 items-center justify-center rounded-xl border hairline bg-white/[0.025] text-[#c8c1b9] hover:bg-white/[0.06]">{editing ? <X size={17} /> : <Pencil size={16} />}</button>
-            : <button type="button" onClick={() => void toggleFollow()} disabled={updatingProfileFollow || !detailsLoaded} aria-busy={updatingProfileFollow} className={`mt-1 inline-flex h-9 min-w-24 items-center justify-center rounded-full px-4 text-sm font-semibold disabled:cursor-wait disabled:opacity-70 ${profile.isFollowing ? "border hairline bg-white/[0.04] text-white" : "bg-[var(--blue)] text-white"}`}>{updatingProfileFollow ? "Saving…" : !detailsLoaded ? "Loading…" : profile.isFollowing ? "Following" : "Follow"}</button>}
+          {isOwnProfile ? (
+            <button type="button" aria-label="Edit profile" title="Edit profile" onClick={() => { setEditing((value) => !value); setMessage(""); }} className="mt-1 flex h-9 w-9 items-center justify-center rounded-xl border hairline bg-white/[0.025] text-[#c8c1b9] hover:bg-white/[0.06]">{editing ? <X size={17} /> : <Pencil size={16} />}</button>
+          ) : (
+            <div className="mt-1 flex items-center gap-2">
+              <Link href={`/messages?with=${encodeURIComponent(profile.id)}`} aria-label={`Message ${profile.name}`} className="inline-flex h-9 items-center justify-center gap-1.5 rounded-full border hairline bg-white/[0.04] px-3 text-sm font-semibold text-white hover:bg-white/[0.08]">
+                <MessageCircle size={16} />
+                Message
+              </Link>
+              <button type="button" onClick={() => void toggleFollow()} disabled={updatingProfileFollow || !detailsLoaded} aria-busy={updatingProfileFollow} className={`inline-flex h-9 min-w-24 items-center justify-center rounded-full px-4 text-sm font-semibold disabled:cursor-wait disabled:opacity-70 ${profile.isFollowing ? "border hairline bg-white/[0.04] text-white" : "bg-[var(--blue)] text-white"}`}>{updatingProfileFollow ? "Saving…" : !detailsLoaded ? "Loading…" : profile.isFollowing ? "Following" : "Follow"}</button>
+            </div>
+          )}
         </div>
         <div className="mt-3 flex items-center gap-2">
           <h1 className="font-display text-[22px] font-semibold">{profile.name}</h1>

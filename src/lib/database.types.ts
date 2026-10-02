@@ -17,6 +17,24 @@ export type Database = {
         Update: { id?: string; display_name?: string; handle?: string; pronouns?: string; bio?: string; location?: string; age?: number | null; height?: string; backstory?: string; role?: string; avatar_url?: string | null; is_verified?: boolean; followers_count?: number; following_count?: number; skills?: string[]; interests?: string[]; created_at?: string };
         Relationships: [];
       };
+      conversations: {
+        Row: { id: string; participant_one: string; participant_two: string; created_at: string };
+        Insert: { id?: string; participant_one: string; participant_two: string; created_at?: string };
+        Update: { id?: string; participant_one?: string; participant_two?: string; created_at?: string };
+        Relationships: [
+          Relation<"conversations_participant_one_fkey", ["participant_one"], "profiles">,
+          Relation<"conversations_participant_two_fkey", ["participant_two"], "profiles">
+        ];
+      };
+      messages: {
+        Row: { id: string; conversation_id: string; sender_id: string; body: string; created_at: string };
+        Insert: { id?: string; conversation_id: string; sender_id: string; body: string; created_at?: string };
+        Update: { id?: string; conversation_id?: string; sender_id?: string; body?: string; created_at?: string };
+        Relationships: [
+          Relation<"messages_conversation_id_fkey", ["conversation_id"], "conversations">,
+          Relation<"messages_sender_id_fkey", ["sender_id"], "profiles">
+        ];
+      };
       shipped_projects: {
         Row: { id: string; owner_id: string; title: string; description: string; link: string | null; badge: string; created_at: string };
         Insert: { id?: string; owner_id: string; title: string; description?: string; link?: string | null; badge?: string; created_at?: string };
