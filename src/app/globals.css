@@ -1,14 +1,12 @@
 @import "tailwindcss";
 
 :root {
-  --background: #070b14;
-  --foreground: #edf3ff;
-  --muted: #9fb0cf;
-  --panel: rgba(255, 255, 255, 0.04);
-  --panel-border: rgba(255, 255, 255, 0.08);
-  --purple: #8b5cf6;
-  --cyan: #4cc9f0;
-  --green: #34d399;
+  --background: #141312;
+  --surface: #1d1b19;
+  --foreground: #f5f2ee;
+  --muted: #aaa49d;
+  --line: rgba(255, 255, 255, 0.09);
+  --blue: #329cff;
 }
 
 @theme inline {
@@ -20,13 +18,12 @@
 
 html {
   scroll-behavior: smooth;
+  background: var(--background);
 }
 
 body {
-  background:
-    radial-gradient(circle at top left, rgba(139, 92, 246, 0.24), transparent 25%),
-    radial-gradient(circle at top right, rgba(76, 201, 240, 0.16), transparent 22%),
-    var(--background);
+  min-height: 100%;
+  background: #090b0d;
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
@@ -36,5 +33,44 @@ body {
 }
 
 ::selection {
-  background: rgba(139, 92, 246, 0.35);
+  background: rgba(50, 156, 255, 0.35);
+}
+
+.font-display { font-family: var(--font-geist-sans), "Trebuchet MS", sans-serif; letter-spacing: 0; }
+.font-brand { font-family: var(--font-syne), sans-serif; letter-spacing: 0; }
+.app-header { background: var(--background); }
+.nav-icon { display: inline-flex; color: #c5bfb7; transition: color 150ms ease; }
+.nav-icon:hover, .nav-icon-active { color: var(--blue); }
+.create-icon { display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 50%; background: var(--blue); color: white; }
+.mobile-nav {
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(92vw, 420px);
+  height: 64px;
+  border-radius: 18px 18px 0 0;
+  padding-bottom: env(safe-area-inset-bottom);
+  background: rgba(13, 15, 17, 0.96);
+  backdrop-filter: blur(16px);
+  box-shadow: 0 -10px 24px rgba(0, 0, 0, 0.18);
+}
+.mobile-nav-link { display: flex; min-height: 64px; align-items: center; justify-content: center; color: #c5bfb7; }
+.mobile-nav-active { color: white; }
+.profile-tab { position: relative; display: flex; min-height: 48px; align-items: center; justify-content: center; white-space: nowrap; color: var(--muted); }
+.profile-tab[aria-selected="true"], .feed-tab[aria-selected="true"] { color: var(--foreground); font-weight: 600; }
+.profile-tab[aria-selected="true"]::after, .feed-tab[aria-selected="true"]::after { content: ""; position: absolute; right: 0; bottom: -1px; left: 0; height: 2px; background: var(--foreground); }
+.feed-tab { position: relative; display: flex; height: 48px; flex: 1; align-items: center; justify-content: center; color: var(--muted); font-size: 14px; letter-spacing: -0.02em; }
+.hairline { border-color: var(--line); }
+.post-action { display: inline-flex; min-height: 34px; align-items: center; gap: 6px; color: #a9a39c; font-size: 12px; }
+.post-action:hover { color: var(--foreground); }
+.post-action-liked { color: #ff6b82; }
+.profile-image { background: radial-gradient(circle at 58% 30%, #b92d32 0 18%, #711b20 34%, #211615 70%); }
+
+@media (min-width: 640px) {
+  .mobile-nav {
+    width: min(78vw, 420px);
+    border-radius: 18px;
+    bottom: 18px;
+    left: 50%;
+    transform: translateX(-50%);
+  }
 }

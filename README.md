@@ -1,36 +1,41 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Buildup
 
-## Getting Started
+Buildup is a Next.js 16 App Router application backed by Supabase Auth and Postgres. This directory is the application root.
 
-First, run the development server:
+## Run locally
 
-```bash
+From the repository root in PowerShell:
+
+```powershell
+Set-Location .\social-web
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open the local URL printed by Next.js, normally `http://localhost:3000`. Do not start a static server or VS Code Live Preview from the parent workspace; it serves files and can show a directory listing instead of the app.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Supabase email redirects
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Signup and password recovery send users through `/auth/callback`. In Supabase Dashboard, under **Authentication > URL Configuration**, add the local app URL to **Redirect URLs** (for example `http://localhost:3000/**`) and add your deployed origin before deploying. The app uses the actual request origin when it asks Supabase to send an email link.
 
-## Learn More
+The callback exchanges Supabase PKCE codes or verifies token-hash links and then redirects only to an internal app path. Email confirmation must remain enabled/disabled according to the project’s Auth settings; when confirmation is enabled, the user confirms before signing in.
 
-To learn more about Next.js, take a look at the following resources:
+## Google sign-in setup
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+The login and signup screens include Google OAuth. To activate the provider:
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+1. In Google Cloud, create an OAuth client with the **Web application** type.
+2. Add this Supabase Auth callback as an authorized redirect URI in Google Cloud:
 
-## Deploy on Vercel
+	`https://uoqamxzoyrolxscmsvor.supabase.co/auth/v1/callback`
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+3. In Supabase Dashboard, open **Authentication > Sign In / Providers > Google**, enable Google, and enter the Google OAuth client ID and client secret.
+4. In **Authentication > URL Configuration > Redirect URLs**, allow the app origins used for local testing. For the usual Next.js port, add `http://localhost:3000/auth/callback` and `http://127.0.0.1:3000/auth/callback`. If using another port, allow that exact origin too (the current verification server is on port `3009`).
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+The Supabase client secret belongs only in the Supabase Dashboard; do not put it in `.env.local` or any `NEXT_PUBLIC_` variable. Without provider credentials, the app shows a setup explanation instead of silently failing.
+
+## Checks
+
+```powershell
+npm run lint
+npm run build
+```

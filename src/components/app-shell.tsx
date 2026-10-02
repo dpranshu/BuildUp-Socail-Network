@@ -1,11 +1,18 @@
+"use client";
+
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
+import { useEffect, useState } from "react";
+import { Bell, House, Plus, Search, UserRound } from "lucide-react";
+import { ProfileAvatar } from "@/components/profile-avatar";
 
 const navItems = [
-  { href: "/feed", label: "Home" },
-  { href: "/profile", label: "Profile" },
-  { href: "/create", label: "Create" },
-  { href: "/login", label: "Login" },
+  { href: "/feed", label: "Home", icon: House },
+  { href: "/search", label: "Search", icon: Search },
+  { href: "/create", label: "Create", icon: Plus },
+  { href: "/notifications", label: "Notifications", icon: Bell },
+  { href: "/profile", label: "Profile", icon: UserRound },
 ];
 
 export function AppShell({
@@ -15,86 +22,73 @@ export function AppShell({
   children: ReactNode;
   title: string;
 }) {
+  const pathname = usePathname();
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    const onAvatarUpdated = (event: Event) => {
+      setAvatarUrl((event as CustomEvent<string | null>).detail);
+    };
+
+    fetch("/api/auth/session")
+      .then((response) => response.json())
+      .then((data) => {
+        if (active) setAvatarUrl(data.user?.avatarUrl ?? null);
+      })
+      .catch(() => {
+        if (active) setAvatarUrl(null);
+      });
+
+    window.addEventListener("profile-avatar-updated", onAvatarUpdated);
+    return () => {
+      active = false;
+      window.removeEventListener("profile-avatar-updated", onAvatarUpdated);
+    };
+  }, [pathname]);
+
   return (
-    <div className="min-h-screen bg-slate-950 text-white">
-      <header className="sticky top-0 z-40 border-b border-white/10 bg-slate-950/80 backdrop-blur-xl">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-5 py-4">
-          <Link href="/feed" className="text-lg font-bold tracking-tight">
-            build<span className="text-cyan-400">in</span>public
-          </Link>
-
-          <nav className="hidden items-center gap-6 md:flex">
-            {navItems.map((item) => (
-              <Link
-                key={item.href}
-                href={item.href}
-                className="text-sm text-slate-300 transition hover:text-white"
-              >
-                {item.label}
-              </Link>
-            ))}
-          </nav>
-
+    <div className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">
+      <header className="app-header sticky top-0 z-40 border-b border-white/[0.07]">
+        <div className="relative mx-auto flex h-[72px] max-w-[640px] items-center justify-center px-4">
           <Link
-            href="/create"
-            className="rounded-full bg-gradient-to-r from-violet-500 to-cyan-400 px-4 py-2 text-sm font-semibold text-white"
+            href="/profile"
+            aria-label="Your profile"
+            title="Your profile"
+            className="absolute left-5"
           >
-            New post
+            <ProfileAvatar src={avatarUrl} alt="" className="h-[30px] w-[30px]" iconSize={17} />
+          </Link>
+          <Link href="/feed" aria-label="Buildup" className="flex h-7 w-[96px] items-center justify-center">
+            <svg viewBox="0 0 140 36" role="img" aria-label="Buildup" className="h-full w-full overflow-visible">
+              <text
+                x="70"
+                y="28"
+                textAnchor="middle"
+                className="font-brand fill-white text-[30px] font-bold"
+              >
+                Buildup
+              </text>
+            </svg>
           </Link>
         </div>
       </header>
-
-      <div className="mx-auto grid max-w-7xl gap-6 px-5 py-6 lg:grid-cols-[220px_minmax(0,1fr)_300px]">
-        <aside className="hidden h-fit rounded-3xl border border-white/10 bg-white/3 p-4 lg:block">
-          <p className="mb-4 text-sm font-semibold uppercase tracking-[0.2em] text-slate-400">
-            Explore
-          </p>
-          <div className="space-y-2">
-            {[
-              "#buildinpublic",
-              "#design",
-              "#startup",
-              "#travel",
-              "#ai",
-              "#creator",
-            ].map((tag) => (
-              <Link
-                key={tag}
-                href="/feed"
-                className="block rounded-2xl border border-white/5 bg-slate-900/70 px-3 py-2 text-sm text-slate-300 transition hover:border-white/10 hover:text-white"
-              >
-                {tag}
-              </Link>
-            ))}
-          </div>
-        </aside>
-
-        <main className="min-w-0">
-          <div className="mb-6 flex items-center justify-between">
-            <h1 className="text-2xl font-bold tracking-tight">{title}</h1>
-          </div>
-          {children}
-        </main>
-
-        <aside className="hidden h-fit rounded-3xl border border-white/10 bg-white/3 p-4 xl:block">
-          <p className="mb-4 text-sm font-semibold uppercase tracking-[0.2em] text-slate-400">
-            Trending
-          </p>
-
-          <div className="space-y-4">
-            {[
-              { name: "Ari Bloom", detail: "building a creator CRM" },
-              { name: "Noah Lane", detail: "travel + remote life" },
-              { name: "Mila Sato", detail: "UX for indie products" },
-            ].map((person) => (
-              <div key={person.name} className="rounded-2xl border border-white/10 bg-slate-900/70 p-3">
-                <div className="font-medium">{person.name}</div>
-                <div className="text-sm text-slate-400">{person.detail}</div>
-              </div>
-            ))}
-          </div>
-        </aside>
-      </div>
+      <main className="mx-auto min-h-[calc(100vh-72px)] max-w-[640px] px-0 pb-28 sm:pb-20">
+        <div className="sr-only">{title}</div>
+        {children}
+      </main>
+      <nav aria-label="Primary" className="mobile-nav fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t border-white/[0.08] bg-[#0d0f11]">
+        {navItems.map(({ href, label, icon: Icon }) => (
+          <Link
+            key={href + label}
+            href={href}
+            aria-label={label}
+            className={`mobile-nav-link ${pathname === href ? "mobile-nav-active" : ""}`}
+          >
+            <Icon size={22} strokeWidth={1.8} />
+          </Link>
+        ))}
+      </nav>
     </div>
   );
 }
