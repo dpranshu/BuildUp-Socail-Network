@@ -1,11 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
-import { Heart, MessageCircle, Repeat2, Share2, MoreHorizontal } from "lucide-react";
+import { Heart, LoaderCircle, MessageCircle, Repeat2, MoreHorizontal } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { PostCard } from "@/components/post-card";
+import { SharePostButton } from "@/components/share-post-button";
+import { getPendingPosts, getServerPendingPosts, removePendingPost, subscribePendingPosts } from "@/lib/pending-posts";
 import type { Comment, Post } from "@/lib/types";
 
 type FeedMode = "for-you" | "following" | "latest";
@@ -14,6 +16,7 @@ type FeedCursor = { createdAt: string; id: string };
 export default function FeedPage() {
   const router = useRouter();
   const [posts, setPosts] = useState<Post[]>([]);
+  const pendingPosts = useSyncExternalStore(subscribePendingPosts, getPendingPosts, getServerPendingPosts);
   const [mode, setMode] = useState<FeedMode>("for-you");
   const [openComments, setOpenComments] = useState<string | null>(null);
   const [menuPost, setMenuPost] = useState<string | null>(null);
@@ -29,6 +32,15 @@ export default function FeedPage() {
   const sentinelRef = useRef<HTMLDivElement | null>(null);
   const modeRef = useRef(mode);
   const loading = loadedMode !== mode;
+  const persistedPosts = posts.filter((post) => !pendingPosts.some((pending) => pending.post.id === post.id));
+
+  useEffect(() => {
+    for (const pending of pendingPosts) {
+      if (pending.status === "complete" && posts.some((post) => post.id === pending.post.id)) {
+        removePendingPost(pending.id);
+      }
+    }
+  }, [pendingPosts, posts]);
 
   useEffect(() => {
     let active = true;
@@ -190,14 +202,21 @@ export default function FeedPage() {
   }
 
   async function deletePost(post: Post) {
-    if (!post.isMine || !window.confirm("Delete this post? This cannot be undone.")) return;
-    const response = await fetch(`/api/posts/${post.id}`, { method: "DELETE" });
-    if (!response.ok) {
-      setNotice("Could not delete post. Try again.");
-      return;
+    if (!post.isMine || !window.confirm("Delete this post from the app? It will no longer be visible, but its database record will be kept.")) return;
+    setNotice("");
+    try {
+      const response = await fetch(`/api/posts/${post.id}`, { method: "DELETE" });
+      const data = await response.json();
+      if (response.status === 401) {
+        router.push("/login");
+        return;
+      }
+      if (!response.ok) throw new Error(data.message ?? "Unable to hide this post.");
+      setPosts((current) => current.filter((item) => item.id !== post.id));
+      setMenuPost(null);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Unable to hide this post. Please try again.");
     }
-    setPosts((current) => current.filter((item) => item.id !== post.id));
-    setMenuPost(null);
   }
 
   async function moderatePost(post: Post, action: "report" | "block" | "not_interested") {
@@ -265,7 +284,33 @@ export default function FeedPage() {
 
       {notice && <p role="status" className="border-b hairline px-5 py-2 text-xs text-amber-300">{notice}</p>}
       <div>
-        {!loading && posts.map((post) => (
+        {pendingPosts.map((pending) => (
+          <div key={pending.id}>
+            <PostCard post={pending.post} authorHref="/profile" />
+            <div className="mx-auto flex max-w-[420px] items-center justify-between gap-3 border-b hairline px-5 py-2 text-xs">
+              {pending.status === "preparing" && (
+                <span className="flex items-center gap-2 text-[var(--muted)]" role="status">
+                  <LoaderCircle size={14} className="animate-spin" />
+                  Preparing image…
+                </span>
+              )}
+              {pending.status === "uploading" && (
+                <span className="flex items-center gap-2 text-[var(--muted)]" role="status">
+                  <LoaderCircle size={14} className="animate-spin" />
+                  Uploading image in the background…
+                </span>
+              )}
+              {pending.status === "complete" && <span role="status" className="text-emerald-300">Post published</span>}
+              {pending.status === "failed" && (
+                <>
+                  <span role="alert" className="min-w-0 text-rose-300">{pending.message ?? "Image upload failed."}</span>
+                  <button type="button" onClick={pending.retry} className="shrink-0 font-semibold text-white hover:text-[var(--blue)]">Retry</button>
+                </>
+              )}
+            </div>
+          </div>
+        ))}
+        {!loading && persistedPosts.map((post) => (
           <PostCard
             key={post.id}
             post={post}
@@ -288,7 +333,7 @@ export default function FeedPage() {
                   <button type="button" aria-label="Show comments" aria-expanded={openComments === post.id} onClick={() => void toggleComments(post.id)} className="post-action"><MessageCircle size={18} /><span>{post.comments}</span></button>
                   <button type="button" aria-label={post.repostedByMe ? "Undo repost" : "Repost"} aria-pressed={post.repostedByMe} onClick={() => void toggleRepost(post)} className={`post-action ${post.repostedByMe ? "text-[var(--blue)]" : ""}`}><Repeat2 size={18} /><span>{post.reposts}</span></button>
                 </div>
-                <button type="button" aria-label="Share post" title="Share" onClick={() => void navigator.clipboard?.writeText(window.location.origin + `/profile?post=${post.id}`)} className="post-action"><Share2 size={17} /></button>
+                <SharePostButton post={post} />
               </div>
             }
             repostComposer={repostComposerPost === post.id && (
@@ -315,7 +360,7 @@ export default function FeedPage() {
             )}
           />
         ))}
-        {!loading && posts.length === 0 && (
+        {!loading && posts.length === 0 && pendingPosts.length === 0 && (
           <div className="px-6 py-16 text-center">
             <p className="font-display text-lg font-medium">Your timeline starts here.</p>
             <p className="mt-2 text-sm text-[var(--muted)]">Share what you&apos;re building, or explore the latest from creators.</p>

@@ -8,6 +8,7 @@ import type { Post } from "@/lib/types";
 export function PostCard({
   post,
   id,
+  authorHref,
   headerActions,
   toolbar,
   actions,
@@ -16,12 +17,15 @@ export function PostCard({
 }: {
   post: Post;
   id?: string;
+  authorHref?: string;
   headerActions?: ReactNode;
   toolbar?: ReactNode;
   actions?: ReactNode;
   repostComposer?: ReactNode;
   comments?: ReactNode;
 }) {
+  const profileHref = authorHref ?? `/creator/${encodeURIComponent(post.handle)}`;
+
   return (
     <article id={id} className="relative mx-auto w-full max-w-[420px] border-b hairline px-4 py-3">
       {post.repostInfo && (
@@ -38,7 +42,7 @@ export function PostCard({
       )}
       <div className="flex items-center gap-3 px-0.5">
         <Link
-          href={`/creator/${encodeURIComponent(post.handle)}`}
+          href={profileHref}
           aria-label={`View ${post.author}'s profile`}
           className="shrink-0"
         >
@@ -46,24 +50,28 @@ export function PostCard({
         </Link>
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5 text-sm font-semibold leading-tight">
-            <Link href={`/creator/${encodeURIComponent(post.handle)}`} className="truncate">{post.author}</Link>
+            <Link href={profileHref} className="truncate">{post.author}</Link>
             {post.isVerified && <BadgeCheck size={14} className="shrink-0 fill-[var(--blue)] text-[var(--blue)]" />}
           </div>
           <p className="truncate text-xs text-[var(--muted)]">{getBioPreview(post.authorBio)}</p>
         </div>
-        {headerActions}
+        {(headerActions || toolbar) && (
+          <div className="relative shrink-0">
+            {headerActions}
+            {toolbar && (
+              <div role="menu" className="absolute right-0 top-full z-30 mt-1 min-w-48 overflow-hidden rounded-md border hairline bg-[var(--surface)] py-1 shadow-xl">
+                {toolbar}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
-      {toolbar && (
-        <div role="menu" className="absolute right-2 top-12 z-30 min-w-48 overflow-hidden rounded-md border hairline bg-[var(--surface)] py-1 shadow-xl">
-          {toolbar}
-        </div>
-      )}
       <p className="mt-2 whitespace-pre-wrap text-[14px] leading-[1.55] text-[#eeeae5]">{post.body}</p>
       {post.tags.length > 0 && <div className="mt-2 flex flex-wrap gap-x-2 text-[12px] text-[var(--blue)]">{post.tags.map((tag) => <span key={`${post.id}-${tag}`}>{tag.startsWith("#") ? tag : `#${tag}`}</span>)}</div>}
       {post.mediaUrls.map((url) => post.mediaType === "video"
         ? <video key={url} className="mt-3 max-h-[520px] w-full bg-black object-contain" controls playsInline preload="none" src={url} />
-        : <Image key={url} src={url} alt="Post attachment" width={1200} height={900} unoptimized loading="lazy" className="mt-3 max-h-[520px] w-full bg-black object-cover" />)}
+        : <Image key={url} src={url} alt="Post attachment" width={1200} height={1200} unoptimized loading="lazy" className="mt-3 aspect-square w-full bg-black object-cover" />)}
 
       {actions ?? (
         <div className="mt-1 flex items-center justify-between" aria-label="Post activity">

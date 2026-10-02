@@ -6,8 +6,9 @@ import { useRouter } from "next/navigation";
 import { AppShell } from "@/components/app-shell";
 import { ProfileAvatar } from "@/components/profile-avatar";
 import { PostCard } from "@/components/post-card";
+import { SharePostButton } from "@/components/share-post-button";
 import type { Comment, Post, Profile, Project } from "@/lib/types";
-import { BadgeCheck, Cake, Camera, ExternalLink, Heart, LoaderCircle, MapPin, MessageCircle, Pencil, Plus, Repeat2, Ruler, Share2, X } from "lucide-react";
+import { BadgeCheck, Cake, Camera, ExternalLink, Heart, LoaderCircle, MapPin, MessageCircle, MoreHorizontal, Pencil, Plus, Repeat2, Ruler, X } from "lucide-react";
 
 type ProfileTab = "posts" | "overview" | "projects";
 type ConnectionsType = "followers" | "following";
@@ -47,6 +48,7 @@ export default function ProfilePage({ handle }: { handle?: string }) {
   const [customPronouns, setCustomPronouns] = useState("");
   const [message, setMessage] = useState("");
   const [openComments, setOpenComments] = useState<string | null>(null);
+  const [menuPost, setMenuPost] = useState<string | null>(null);
   const [commentDraft, setCommentDraft] = useState("");
   const [repostComposerPost, setRepostComposerPost] = useState<string | null>(null);
   const [repostDraft, setRepostDraft] = useState("");
@@ -269,6 +271,63 @@ export default function ProfilePage({ handle }: { handle?: string }) {
     }
   }
 
+  async function deleteProfilePost(post: Post) {
+    if (!isOwnProfile || !post.isMine || !window.confirm("Hide this post from the app? Its database record will be kept.")) return;
+    setMessage("");
+    try {
+      const response = await fetch(`/api/posts/${post.id}`, { method: "DELETE" });
+      const data = await response.json();
+      if (response.status === 401) {
+        router.push("/login");
+        return;
+      }
+      if (!response.ok) throw new Error(data.message ?? "Unable to hide this post.");
+      setProfile((current) => current ? {
+        ...current,
+        posts: current.posts.filter((item) => item.id !== post.id),
+      } : current);
+      setMenuPost(null);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Unable to hide this post. Please try again.");
+    }
+  }
+
+  async function moderateProfilePost(post: Post, action: "report" | "block" | "not_interested") {
+    setMessage("");
+    try {
+      const response = await fetch(`/api/posts/${post.id}/moderation`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action }),
+      });
+      const data = await response.json();
+      if (response.status === 401) {
+        router.push("/login");
+        return;
+      }
+      if (!response.ok) throw new Error(data.message ?? "Unable to apply this action.");
+
+      if (action === "block") {
+        setProfile((current) => current ? {
+          ...current,
+          posts: current.posts.filter((item) => item.authorId !== post.authorId),
+        } : current);
+        setMessage(`Blocked ${post.author}. Their posts won't appear in your feed.`);
+      } else if (action === "not_interested") {
+        setProfile((current) => current ? {
+          ...current,
+          posts: current.posts.filter((item) => item.id !== post.id),
+        } : current);
+        setMessage("We’ll show you fewer posts like this.");
+      } else {
+        setMessage("Report sent for review.");
+      }
+      setMenuPost(null);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Unable to apply this action.");
+    }
+  }
+
   async function togglePostComments(postId: string) {
     if (openComments === postId) {
       setOpenComments(null);
@@ -343,6 +402,7 @@ export default function ProfilePage({ handle }: { handle?: string }) {
           return [{ ...item, repostedByMe: false, reposts: data.reposts }];
         }),
       } : current);
+      setMenuPost(null);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Could not update repost. Try again.");
     }
@@ -420,33 +480,6 @@ export default function ProfilePage({ handle }: { handle?: string }) {
     } finally {
       profileFollowInFlight.current = false;
       setUpdatingProfileFollow(false);
-    }
-  }
-
-  async function sharePost(post: Post) {
-    const url = new URL(`/creator/${encodeURIComponent(post.handle)}`, window.location.origin);
-    url.searchParams.set("post", post.id);
-    const shareData = { title: `${post.author} on Buildup`, text: post.body.slice(0, 180), url: url.toString() };
-    setMessage("");
-
-    if (navigator.share) {
-      try {
-        await navigator.share(shareData);
-        return;
-      } catch (error) {
-        if (error instanceof DOMException && error.name === "AbortError") return;
-      }
-    }
-
-    try {
-      if (navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(shareData.url);
-        setMessage("Post link copied.");
-        return;
-      }
-      window.prompt("Copy this post link:", shareData.url);
-    } catch (error) {
-      setMessage(error instanceof Error ? `Could not share post: ${error.message}` : "Could not share post.");
     }
   }
 
@@ -772,11 +805,78 @@ export default function ProfilePage({ handle }: { handle?: string }) {
 
       {tab === "posts" && (
         <section>
-          {profile.posts.length ? profile.posts.map((post) => (
+          {profile.posts.length ? profile.posts.map((post) => {
+            const postCardKey = `${post.id}-${post.repostInfo ? "repost" : "post"}`;
+            const canOpenPostMenu = Boolean(profile.isAuthenticated && (
+              isOwnProfile ? post.isMine || post.repostInfo : true
+            ));
+            return (
             <PostCard
-              key={`${post.id}-${post.repostInfo ? "repost" : "post"}`}
+              key={postCardKey}
               id={`post-${post.id}`}
               post={post}
+              authorHref={isOwnProfile ? "/profile" : undefined}
+              headerActions={canOpenPostMenu && (
+                <button
+                  type="button"
+                  title="More post actions"
+                  aria-label="More post actions"
+                  aria-haspopup="menu"
+                  aria-expanded={menuPost === postCardKey}
+                  onClick={() => setMenuPost((current) => current === postCardKey ? null : postCardKey)}
+                  className="rounded-full p-1.5 text-[var(--muted)] hover:bg-white/5"
+                >
+                  <MoreHorizontal size={19} />
+                </button>
+              )}
+              toolbar={canOpenPostMenu && menuPost === postCardKey && (
+                isOwnProfile && post.repostInfo ? (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => void togglePostRepost(post)}
+                    className="flex w-full items-center px-3 py-2 text-left text-sm text-rose-300 hover:bg-white/[0.06]"
+                  >
+                    Remove repost
+                  </button>
+                ) : isOwnProfile && post.isMine ? (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => void deleteProfilePost(post)}
+                    className="flex w-full items-center px-3 py-2 text-left text-sm text-rose-300 hover:bg-white/[0.06]"
+                  >
+                    Delete post
+                  </button>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => void moderateProfilePost(post, "report")}
+                      className="flex w-full items-center px-3 py-2 text-left text-sm text-white hover:bg-white/[0.06]"
+                    >
+                      Report post
+                    </button>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => void moderateProfilePost(post, "block")}
+                      className="flex w-full items-center px-3 py-2 text-left text-sm text-white hover:bg-white/[0.06]"
+                    >
+                      Block {post.author}
+                    </button>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => void moderateProfilePost(post, "not_interested")}
+                      className="flex w-full items-center px-3 py-2 text-left text-sm text-white hover:bg-white/[0.06]"
+                    >
+                      Not interested
+                    </button>
+                  </>
+                )
+              )}
               actions={
                 <div className="mt-1 flex items-center justify-between">
                   <div className="flex items-center gap-3">
@@ -790,9 +890,7 @@ export default function ProfilePage({ handle }: { handle?: string }) {
                       <Repeat2 size={18} /><span>{post.reposts}</span>
                     </button>
                   </div>
-                  <button type="button" aria-label="Share post" title="Share" onClick={() => void sharePost(post)} className="post-action">
-                    <Share2 size={17} />
-                  </button>
+                  <SharePostButton post={post} />
                 </div>
               }
               repostComposer={repostComposerPost === post.id && (
@@ -823,7 +921,8 @@ export default function ProfilePage({ handle }: { handle?: string }) {
                 </div>
               )}
             />
-          )) : <EmptyState title="No posts or reposts yet" detail="Updates and reposts will show up here when you share them." action={isOwnProfile ? <Link href="/create" className="text-[var(--blue)]">Write your first post</Link> : null} />}
+            );
+          }) : <EmptyState title="No posts or reposts yet" detail="Updates and reposts will show up here when you share them." action={isOwnProfile ? <Link href="/create" className="text-[var(--blue)]">Write your first post</Link> : null} />}
         </section>
       )}
 
