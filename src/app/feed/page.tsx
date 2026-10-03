@@ -3,12 +3,14 @@
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
-import { Heart, LoaderCircle, MessageCircle, Repeat2, MoreHorizontal } from "lucide-react";
+import { Hash, Heart, Image as ImageIcon, LoaderCircle, MessageCircle, MoreHorizontal, Repeat2, Smile, Video } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { PostCard } from "@/components/post-card";
+import { ProfileAvatar } from "@/components/profile-avatar";
 import { SharePostButton } from "@/components/share-post-button";
 import { usePostCountsRealtime } from "@/hooks/use-post-counts-realtime";
 import { getPendingPosts, getServerPendingPosts, removePendingPost, subscribePendingPosts } from "@/lib/pending-posts";
+import { POST_BODY_MAX_LENGTH, POST_DRAFT_MAX_LENGTH } from "@/lib/post-limits";
 import type { Comment, Post } from "@/lib/types";
 
 type FeedMode = "for-you" | "following" | "latest";
@@ -25,6 +27,12 @@ export default function FeedPage() {
   const [repostComposerPost, setRepostComposerPost] = useState<string | null>(null);
   const [repostDraft, setRepostDraft] = useState("");
   const [notice, setNotice] = useState("");
+  const [composerBody, setComposerBody] = useState("");
+  const [composerTags, setComposerTags] = useState("");
+  const [showComposerTags, setShowComposerTags] = useState(false);
+  const [publishing, setPublishing] = useState(false);
+  const [currentUser, setCurrentUser] = useState<{ id: string; avatarUrl: string | null } | null>(null);
+  const composerRef = useRef<HTMLTextAreaElement | null>(null);
   const [loadedMode, setLoadedMode] = useState<FeedMode | null>(null);
   const [nextCursor, setNextCursor] = useState<FeedCursor | null>(null);
   const [hasMore, setHasMore] = useState(false);
@@ -75,6 +83,30 @@ export default function FeedPage() {
       .finally(() => { if (active) setLoadedMode(mode); });
     return () => { active = false; };
   }, [mode]);
+
+  useEffect(() => {
+    let active = true;
+    fetch("/api/auth/session")
+      .then(async (response) => {
+        const data = await response.json();
+        if (active && data.user?.id) {
+          setCurrentUser({ id: data.user.id, avatarUrl: data.user.avatarUrl ?? null });
+        }
+      })
+      .catch(() => {
+        if (active) setCurrentUser(null);
+      });
+    return () => { active = false; };
+  }, []);
+
+  useEffect(() => {
+    const textarea = composerRef.current;
+    if (!textarea) return;
+    textarea.style.height = "auto";
+    const maxHeight = 160;
+    textarea.style.height = `${Math.min(textarea.scrollHeight, maxHeight)}px`;
+    textarea.style.overflowY = textarea.scrollHeight > maxHeight ? "auto" : "hidden";
+  }, [composerBody]);
 
   const loadMorePosts = useCallback(async () => {
     if (!hasMore || !nextCursor || loading || loadMoreRef.current) return;
@@ -283,6 +315,50 @@ export default function FeedPage() {
     setCommentDraft("");
   }
 
+  function openCreatePage(mediaType: "image" | "video") {
+    window.sessionStorage.setItem("buildup-create-draft", composerBody);
+    window.sessionStorage.setItem("buildup-create-media", mediaType);
+    router.push("/create");
+  }
+
+  function appendComposerEmoji() {
+    const emoji = "🙂";
+    setComposerBody((body) => body.length + emoji.length <= POST_DRAFT_MAX_LENGTH ? `${body}${emoji}` : body);
+  }
+
+  async function publishTextPost(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const body = composerBody.trim();
+    if (!body || composerBody.length > POST_BODY_MAX_LENGTH || publishing) return;
+    const tags = composerTags
+      .split(/[\s,]+/)
+      .map((tag) => tag.trim().replace(/^#/, ""))
+      .filter(Boolean);
+    setPublishing(true);
+    setNotice("");
+    try {
+      const response = await fetch("/api/posts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ body, tags, mediaUrls: [], mediaType: "text" }),
+      });
+      const data = await response.json();
+      if (response.status === 401) {
+        router.push("/login");
+        return;
+      }
+      if (!response.ok) throw new Error(data.message ?? "Unable to publish your post.");
+      setPosts((current) => [data.post as Post, ...current.filter((post) => post.id !== data.post.id)]);
+      setComposerBody("");
+      setComposerTags("");
+      setShowComposerTags(false);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Unable to publish your post.");
+    } finally {
+      setPublishing(false);
+    }
+  }
+
   return (
     <AppShell title="Home">
       <div className="border-b hairline px-5 pt-2">
@@ -293,12 +369,76 @@ export default function FeedPage() {
         </div>
       </div>
 
+      {currentUser && (
+        <form
+          onSubmit={(event) => void publishTextPost(event)}
+          className="mx-auto hidden w-full max-w-[420px] border-b hairline px-4 py-3 md:max-w-[598px] md:px-5 lg:block"
+        >
+          <div className="flex items-center gap-3">
+            <Link href="/profile" aria-label="Your profile" className="shrink-0">
+              <ProfileAvatar src={currentUser.avatarUrl} alt="" className="h-10 w-10" iconSize={21} />
+            </Link>
+            <label htmlFor="feed-composer-body" className="sr-only">Write a post</label>
+            <textarea
+              ref={composerRef}
+              id="feed-composer-body"
+              rows={1}
+              maxLength={POST_DRAFT_MAX_LENGTH}
+              value={composerBody}
+              onChange={(event) => setComposerBody(event.target.value)}
+              placeholder="What are you building, learning, or figuring out?"
+              className="composer-scrollbar min-h-10 min-w-0 flex-1 resize-none overflow-y-hidden bg-transparent py-2 text-base text-white outline-none placeholder:text-[#77716b]"
+            />
+          </div>
+          {showComposerTags && (
+            <label className="ml-[52px] mt-2 block">
+              <span className="sr-only">Add tags</span>
+              <input
+                value={composerTags}
+                onChange={(event) => setComposerTags(event.target.value)}
+                placeholder="Add tags, separated by spaces"
+                className="w-full border-t hairline bg-transparent py-2 text-sm text-white outline-none placeholder:text-[#77716b]"
+              />
+            </label>
+          )}
+          <div className="mt-2 flex items-center justify-between pl-[48px]">
+            <div className="flex items-center gap-1" role="group" aria-label="Post options">
+              <button type="button" onClick={() => openCreatePage("image")} aria-label="Add image" title="Add image" className="flex h-9 w-9 items-center justify-center rounded-full text-[var(--muted)] hover:bg-white/[0.06] hover:text-[var(--blue)]">
+                <ImageIcon size={19} />
+              </button>
+              <button type="button" onClick={() => openCreatePage("video")} aria-label="Add video" title="Add video" className="flex h-9 w-9 items-center justify-center rounded-full text-[var(--muted)] hover:bg-white/[0.06] hover:text-[var(--blue)]">
+                <Video size={18} />
+              </button>
+              <button type="button" onClick={() => setShowComposerTags((visible) => !visible)} aria-label="Add tags" aria-pressed={showComposerTags} title="Add tags" className="flex h-9 w-9 items-center justify-center rounded-full text-[var(--muted)] hover:bg-white/[0.06] hover:text-[var(--blue)]">
+                <Hash size={19} />
+              </button>
+              <button type="button" onClick={appendComposerEmoji} aria-label="Add emoji" title="Add emoji" className="flex h-9 w-9 items-center justify-center rounded-full text-[var(--muted)] hover:bg-white/[0.06] hover:text-[var(--blue)]">
+                <Smile size={19} />
+              </button>
+            </div>
+            {composerBody.length > POST_BODY_MAX_LENGTH && (
+              <span role="alert" className="text-xs text-rose-300">
+                Remove {composerBody.length - POST_BODY_MAX_LENGTH} characters to post.
+              </span>
+            )}
+            <button
+              type="submit"
+              disabled={!composerBody.trim() || composerBody.length > POST_BODY_MAX_LENGTH || publishing}
+              className="inline-flex h-9 min-w-[68px] items-center justify-center gap-2 rounded-full bg-[var(--blue)] px-4 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {publishing && <LoaderCircle size={15} className="animate-spin" />}
+              Post
+            </button>
+          </div>
+        </form>
+      )}
+
       {notice && <p role="status" className="border-b hairline px-5 py-2 text-xs text-amber-300">{notice}</p>}
       <div>
         {pendingPosts.map((pending) => (
           <div key={pending.id}>
             <PostCard post={pending.post} authorHref="/profile" />
-            <div className="mx-auto flex max-w-[420px] items-center justify-between gap-3 border-b hairline px-5 py-2 text-xs">
+            <div className="mx-auto flex max-w-[420px] items-center justify-between gap-3 border-b hairline px-5 py-2 text-xs md:max-w-[598px]">
               {pending.status === "preparing" && (
                 <span className="flex items-center gap-2 text-[var(--muted)]" role="status">
                   <LoaderCircle size={14} className="animate-spin" />

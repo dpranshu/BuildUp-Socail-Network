@@ -98,7 +98,7 @@ export function AppShell({
   return (
     <div className={`app-shell min-h-screen bg-[var(--background)] text-[var(--foreground)] ${hiddenChromePathname === pathname ? "chrome-hidden" : ""}`}>
       <header className="app-header sticky top-0 z-40">
-        <div className="relative mx-auto flex h-[72px] max-w-[420px] items-center justify-center border-b border-white/[0.07] px-4">
+        <div className="relative mx-auto flex h-[72px] max-w-[420px] items-center justify-center border-b border-white/[0.07] px-4 md:max-w-[598px]">
           <Link
             href="/profile"
             aria-label="Your profile"
@@ -163,7 +163,7 @@ export function AppShell({
           )}
         </div>
       </header>
-      <main className="mx-auto min-h-[calc(100vh-72px)] max-w-[420px] px-0 pb-28 sm:pb-20">
+      <main className="mx-auto min-h-[calc(100vh-72px)] max-w-[420px] px-0 pb-28 sm:pb-20 md:max-w-[598px]">
         <div className="sr-only">{title}</div>
         {children}
       </main>

@@ -110,7 +110,7 @@ export default function SearchPage() {
         <h2 className="px-5 pb-2 pt-4 text-sm font-semibold sm:px-0">Posts</h2>
         {posts.map((post) => <article key={post.id} className="border-t hairline px-4 py-4 sm:px-0">
           <Link href={`/creator/${encodeURIComponent(post.handle)}`} className="text-sm font-semibold">{post.author}<span className="ml-2 text-xs font-normal text-[var(--muted)]">{post.handle}</span></Link>
-          <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-[#ded9d3]">{post.body}</p>
+          <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-[#ded9d3] md:text-base">{post.body}</p>
           {post.tags.length > 0 && <div className="mt-2 flex flex-wrap gap-2 text-xs text-[var(--blue)]">{post.tags.map((tag) => <span key={`${post.id}-${tag}`}>{tag.startsWith("#") ? tag : `#${tag}`}</span>)}</div>}
           <p className="mt-3 text-xs text-[var(--muted)]">♡ {post.likes}<span className="mx-4">◯ {post.comments}</span><span>↻ {post.reposts}</span></p>
         </article>)}

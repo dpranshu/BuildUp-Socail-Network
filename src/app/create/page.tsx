@@ -7,6 +7,7 @@ import { FileText, Hash, Image as ImageIcon, Send, Trash2, Video } from "lucide-
 import { AppShell } from "@/components/app-shell";
 import { compressPostImage, PostImageEditor, type PostImageSelection } from "@/components/post-image-editor";
 import { addPendingPost, removePendingPost, updatePendingPost } from "@/lib/pending-posts";
+import { POST_BODY_MAX_LENGTH, POST_DRAFT_MAX_LENGTH } from "@/lib/post-limits";
 import type { Post } from "@/lib/types";
 
 export default function CreatePage() {
@@ -30,6 +31,23 @@ export default function CreatePage() {
     }
   }, []);
 
+  useEffect(() => {
+    const savedBody = window.sessionStorage.getItem("buildup-create-draft");
+    const savedMediaType = window.sessionStorage.getItem("buildup-create-media");
+    if (savedBody !== null) {
+      window.sessionStorage.removeItem("buildup-create-draft");
+    }
+    if (savedMediaType === "image" || savedMediaType === "video") {
+      window.sessionStorage.removeItem("buildup-create-media");
+    }
+    if (savedBody !== null || savedMediaType === "image" || savedMediaType === "video") {
+      window.setTimeout(() => {
+        if (savedBody !== null) setBody(savedBody);
+        if (savedMediaType === "image" || savedMediaType === "video") setMediaType(savedMediaType);
+      }, 0);
+    }
+  }, []);
+
   function selectImage(file: File | null) {
     if (imagePreviewUrlRef.current) URL.revokeObjectURL(imagePreviewUrlRef.current);
     const previewUrl = file ? URL.createObjectURL(file) : null;
@@ -47,6 +65,7 @@ export default function CreatePage() {
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setMessage("");
+    if (body.length > POST_BODY_MAX_LENGTH) return;
 
     const tagList = tags
       .split(/[\s,]+/)
@@ -226,14 +245,18 @@ export default function CreatePage() {
         />
         <div className="flex items-center justify-between border-b hairline py-4">
           <h1 className="font-display text-lg font-semibold">Create a post</h1>
-          <span className="text-xs text-[var(--muted)]">{body.length}/5000</span>
+          {body.length > POST_BODY_MAX_LENGTH && (
+            <span role="alert" className="text-xs text-rose-300">
+              Remove {body.length - POST_BODY_MAX_LENGTH} characters to post.
+            </span>
+          )}
         </div>
 
         <label htmlFor="post-body" className="sr-only">Post text</label>
         <textarea
           id="post-body"
           rows={2}
-          maxLength={5000}
+          maxLength={POST_DRAFT_MAX_LENGTH}
           value={body}
           onChange={(event) => setBody(event.target.value)}
           placeholder="What are you building, learning, or figuring out?"
@@ -336,6 +359,7 @@ export default function CreatePage() {
           <button
             type="submit"
             disabled={submitting
+              || body.length > POST_BODY_MAX_LENGTH
               || (!body.trim() && !imageSelection && !mediaUrls.trim())
               || (mediaType === "image" && !imageSelection)}
             className="inline-flex min-h-10 items-center gap-2 rounded-md bg-[var(--blue)] px-4 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"

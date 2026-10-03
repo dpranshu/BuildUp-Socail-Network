@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { POST_BODY_MAX_LENGTH } from "@/lib/post-limits";
 
 const postImageTypes: Record<string, string> = {
   "image/jpeg": "jpg",
@@ -123,9 +124,9 @@ export async function POST(request: Request) {
     : input.mediaType === "video" ? "video" : "text";
   const postBody = [title, content].filter(Boolean).join("\n\n");
 
-  if (postBody.length > 5000 || title.length > 120 || content.length > 5000 || (!postBody && !imageFile && mediaUrls.length === 0) || (mediaType !== "text" && mediaUrls.length === 0 && !imageFile)) {
+  if (postBody.length > POST_BODY_MAX_LENGTH || title.length > 120 || content.length > POST_BODY_MAX_LENGTH || (!postBody && !imageFile && mediaUrls.length === 0) || (mediaType !== "text" && mediaUrls.length === 0 && !imageFile)) {
     return NextResponse.json(
-      { message: "Add post text or an image. Text must be under 5,000 characters." },
+      { message: `Add post text or an image. Post text must be ${POST_BODY_MAX_LENGTH} characters or fewer.` },
       { status: 400 },
     );
   }

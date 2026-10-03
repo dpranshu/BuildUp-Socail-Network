@@ -1,6 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
-import type { ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { BadgeCheck, Heart, MessageCircle, Repeat2, Share2 } from "lucide-react";
 import { ProfileAvatar } from "@/components/profile-avatar";
 import type { Post } from "@/lib/types";
@@ -25,9 +25,27 @@ export function PostCard({
   comments?: ReactNode;
 }) {
   const profileHref = authorHref ?? `/creator/${encodeURIComponent(post.handle)}`;
+  const captionRef = useRef<HTMLParagraphElement>(null);
+  const [captionExpanded, setCaptionExpanded] = useState(false);
+  const [captionOverflows, setCaptionOverflows] = useState(false);
+  const hasImageCaption = post.mediaType === "image" && post.mediaUrls.length > 0 && Boolean(post.body);
+
+  useEffect(() => {
+    const caption = captionRef.current;
+    if (!caption || !hasImageCaption || captionExpanded) return;
+
+    const measureOverflow = () => {
+      setCaptionOverflows(caption.scrollHeight > caption.clientHeight + 1);
+    };
+
+    measureOverflow();
+    const resizeObserver = new ResizeObserver(measureOverflow);
+    resizeObserver.observe(caption);
+    return () => resizeObserver.disconnect();
+  }, [captionExpanded, hasImageCaption, post.body]);
 
   return (
-    <article id={id} className="relative mx-auto w-full max-w-[420px] border-b hairline px-4 py-3">
+    <article id={id} className="relative mx-auto w-full max-w-[420px] border-b hairline px-4 py-3 md:max-w-[598px]">
       {post.repostInfo && (
         <p className="mb-2 flex items-center gap-1.5 text-xs text-[var(--muted)]">
           <Repeat2 size={14} />
@@ -38,7 +56,7 @@ export function PostCard({
         </p>
       )}
       {post.repostInfo?.thoughts && (
-        <p className="mb-3 whitespace-pre-wrap text-[14px] leading-[1.55] text-[#eeeae5]">{post.repostInfo.thoughts}</p>
+        <p className="mb-3 whitespace-pre-wrap text-[14px] leading-[1.55] text-[#eeeae5] md:text-base">{post.repostInfo.thoughts}</p>
       )}
       <div className="flex items-center gap-3 px-0.5">
         <Link
@@ -53,7 +71,7 @@ export function PostCard({
             <Link href={profileHref} className="truncate">{post.author}</Link>
             {post.isVerified && <BadgeCheck size={14} className="shrink-0 fill-[var(--blue)] text-[var(--blue)]" />}
           </div>
-          <p className="truncate text-xs text-[var(--muted)]">{getBioPreview(post.authorBio)}</p>
+          <p className="truncate text-xs text-[var(--muted)] md:text-[0.8rem]">{getBioPreview(post.authorBio)}</p>
         </div>
         {(headerActions || toolbar) && (
           <div className="relative shrink-0">
@@ -67,7 +85,30 @@ export function PostCard({
         )}
       </div>
 
-      <p className="mt-2 whitespace-pre-wrap text-[14px] leading-[1.55] text-[#eeeae5]">{post.body}</p>
+      {post.body && (
+        <div className="mt-2">
+          <p
+            ref={captionRef}
+            id={`post-caption-${post.id}`}
+            className={`whitespace-pre-wrap text-[14px] leading-[1.55] text-[#eeeae5] md:text-base ${
+              hasImageCaption && !captionExpanded ? "line-clamp-2" : ""
+            }`}
+          >
+            {post.body}
+          </p>
+          {hasImageCaption && (captionOverflows || captionExpanded) && (
+            <button
+              type="button"
+              aria-controls={`post-caption-${post.id}`}
+              aria-expanded={captionExpanded}
+              onClick={() => setCaptionExpanded((expanded) => !expanded)}
+              className="mt-0.5 text-sm font-medium text-[var(--muted)] hover:text-white"
+            >
+              {captionExpanded ? "less" : "…more"}
+            </button>
+          )}
+        </div>
+      )}
       {post.tags.length > 0 && <div className="mt-2 flex flex-wrap gap-x-2 text-[12px] text-[var(--blue)]">{post.tags.map((tag) => <span key={`${post.id}-${tag}`}>{tag.startsWith("#") ? tag : `#${tag}`}</span>)}</div>}
       {post.mediaUrls.map((url) => post.mediaType === "video"
         ? <video key={url} className="mt-3 max-h-[520px] w-full bg-black object-contain" controls playsInline preload="none" src={url} />

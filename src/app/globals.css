@@ -65,6 +65,14 @@ body {
 .post-action:hover { color: var(--foreground); }
 .post-action-liked { color: #ff6b82; }
 .profile-image { background: radial-gradient(circle at 58% 30%, #b92d32 0 18%, #711b20 34%, #211615 70%); }
+.composer-scrollbar {
+  scrollbar-color: rgba(170, 164, 157, 0.55) rgba(255, 255, 255, 0.035);
+  scrollbar-width: thin;
+}
+.composer-scrollbar::-webkit-scrollbar { width: 6px; }
+.composer-scrollbar::-webkit-scrollbar-track { border-radius: 999px; background: rgba(255, 255, 255, 0.035); }
+.composer-scrollbar::-webkit-scrollbar-thumb { border: 1px solid transparent; border-radius: 999px; background: rgba(170, 164, 157, 0.55); background-clip: padding-box; }
+.composer-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(170, 164, 157, 0.8); background-clip: padding-box; }
 
 @media (min-width: 640px) {
   .mobile-nav {
@@ -89,7 +97,7 @@ body {
   }
 }
 
-@media (min-width: 768px) {
+@media (min-width: 640px) {
   .app-shell {
     padding-left: 64px;
   }

@@ -1,0 +1,2 @@
+export const POST_BODY_MAX_LENGTH = 1000;
+export const POST_DRAFT_MAX_LENGTH = 5000;

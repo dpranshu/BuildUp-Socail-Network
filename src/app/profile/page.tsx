@@ -680,7 +680,7 @@ export default function ProfilePage({ handle }: { handle?: string }) {
           {profile.isVerified && <BadgeCheck size={18} className="fill-[var(--blue)] text-[var(--blue)]" />}
         </div>
         <p className="mt-0.5 text-[13px] text-[var(--muted)]">{profile.handle}{profile.pronouns && <><span className="mx-1">·</span>{profile.pronouns}</>}</p>
-        <p className="mt-4 max-w-2xl text-[14px] leading-[1.65] text-[#d7d1ca]">{profile.bio || "Share what you make and what you are learning."}</p>
+        <p className="mt-4 max-w-2xl text-[14px] leading-[1.65] text-[#d7d1ca] md:text-base">{profile.bio || "Share what you make and what you are learning."}</p>
         <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-[var(--muted)]">
           {profile.location && <span className="inline-flex items-center gap-1.5"><MapPin size={14} className="text-[var(--blue)]" />{profile.location}</span>}
           {profile.age !== null && <span className="inline-flex items-center gap-1.5"><Cake size={14} className="text-[var(--blue)]" />{profile.age}</span>}
