@@ -88,86 +88,97 @@ class _SearchScreenState extends State<SearchScreen>
   }
 
   @override
-  Widget build(BuildContext context) => PageFrame(
-    child: Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(14, 12, 14, 8),
-          child: TextField(
-            controller: _controller,
-            autofocus: true,
-            onChanged: _onQuery,
-            textInputAction: TextInputAction.search,
-            decoration: InputDecoration(
-              prefixIcon: const Icon(Icons.search_rounded),
-              hintText: 'Creators, posts, and opportunities',
-              suffixIcon: IconButton(
-                onPressed: () {
-                  _controller.clear();
-                  _onQuery('');
-                },
-                icon: const Icon(Icons.close),
+  Widget build(BuildContext context) => Scaffold(
+    backgroundColor: const Color(0xFF141312),
+    body: SafeArea(
+      child: Material(
+        color: const Color(0xFF141312),
+        child: PageFrame(
+          child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(14, 12, 14, 8),
+              child: Material(
+                color: const Color(0xFF1C1B1A),
+                child: TextField(
+                  controller: _controller,
+                  autofocus: true,
+                  onChanged: _onQuery,
+                  textInputAction: TextInputAction.search,
+                  decoration: InputDecoration(
+                    prefixIcon: const Icon(Icons.search_rounded),
+                    hintText: 'Creators, posts, and opportunities',
+                    suffixIcon: IconButton(
+                      onPressed: () {
+                        _controller.clear();
+                        _onQuery('');
+                      },
+                      icon: const Icon(Icons.close),
+                    ),
+                  ),
+                ),
               ),
             ),
+            TabBar(
+              controller: _tabs,
+              tabs: const [
+                Tab(text: 'People'),
+                Tab(text: 'Posts'),
+              ],
+            ),
+            if (_error != null) InlineNotice(text: _error!, isError: true),
+            Expanded(
+              child: _loading
+                  ? const LoadingPanel(label: 'Searching…')
+                  : TabBarView(
+                      controller: _tabs,
+                      children: [
+                        _creators.isEmpty
+                            ? const Center(
+                                child: Text(
+                                  'Search for creators by name or handle.',
+                                ),
+                              )
+                            : ListView.builder(
+                                itemCount: _creators.length,
+                                itemBuilder: (context, index) {
+                                  final creator = _creators[index];
+                                  return ListTile(
+                                    leading: CreatorAvatar(
+                                      url: creator.avatarUrl,
+                                      name: creator.name,
+                                      radius: 23,
+                                    ),
+                                    title: Text(creator.name),
+                                    subtitle: Text(
+                                      '${creator.handle}${creator.role.isEmpty ? '' : ' · ${creator.role}'}',
+                                    ),
+                                    trailing: const Icon(Icons.chevron_right),
+                                    onTap: () => _openProfile(creator.id),
+                                  );
+                                },
+                              ),
+                        _posts.isEmpty
+                            ? const Center(
+                                child: Text(
+                                  'Matching posts and opportunities appear here.',
+                                ),
+                              )
+                            : ListView.builder(
+                                itemCount: _posts.length,
+                                itemBuilder: (context, index) => PostCard(
+                                  post: _posts[index],
+                                  repository: widget.repository,
+                                  openProfile: _openProfile,
+                                ),
+                              ),
+                      ],
+                    ),
+            ),
+          ],
           ),
         ),
-        TabBar(
-          controller: _tabs,
-          tabs: const [
-            Tab(text: 'People'),
-            Tab(text: 'Posts'),
-          ],
-        ),
-        if (_error != null) InlineNotice(text: _error!, isError: true),
-        Expanded(
-          child: _loading
-              ? const LoadingPanel(label: 'Searching…')
-              : TabBarView(
-                  controller: _tabs,
-                  children: [
-                    _creators.isEmpty
-                        ? const Center(
-                            child: Text(
-                              'Search for creators by name or handle.',
-                            ),
-                          )
-                        : ListView.builder(
-                            itemCount: _creators.length,
-                            itemBuilder: (context, index) {
-                              final creator = _creators[index];
-                              return ListTile(
-                                leading: CreatorAvatar(
-                                  url: creator.avatarUrl,
-                                  name: creator.name,
-                                  radius: 23,
-                                ),
-                                title: Text(creator.name),
-                                subtitle: Text(
-                                  '${creator.handle}${creator.role.isEmpty ? '' : ' · ${creator.role}'}',
-                                ),
-                                trailing: const Icon(Icons.chevron_right),
-                                onTap: () => _openProfile(creator.id),
-                              );
-                            },
-                          ),
-                    _posts.isEmpty
-                        ? const Center(
-                            child: Text(
-                              'Matching posts and opportunities appear here.',
-                            ),
-                          )
-                        : ListView.builder(
-                            itemCount: _posts.length,
-                            itemBuilder: (context, index) => PostCard(
-                              post: _posts[index],
-                              repository: widget.repository,
-                              openProfile: _openProfile,
-                            ),
-                          ),
-                  ],
-                ),
-        ),
-      ],
+      ),
     ),
   );
 }

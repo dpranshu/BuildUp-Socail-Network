@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -5,6 +7,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../data/repository.dart';
 import '../models.dart';
 import '../widgets.dart';
+import 'chat_screen.dart';
 
 class PostCard extends StatefulWidget {
   const PostCard({
@@ -13,11 +16,13 @@ class PostCard extends StatefulWidget {
     required this.repository,
     required this.openProfile,
     this.onDeleted,
+    this.allowRemoveRepost = false,
   });
   final SocialPost post;
   final AppRepository repository;
   final ValueChanged<String> openProfile;
   final VoidCallback? onDeleted;
+  final bool allowRemoveRepost;
 
   @override
   State<PostCard> createState() => _PostCardState();
@@ -26,11 +31,38 @@ class PostCard extends StatefulWidget {
 class _PostCardState extends State<PostCard> {
   late SocialPost _post = widget.post;
   bool _busy = false;
+  Offset? _doubleTapPosition;
+  Offset? _likePopPosition;
+  Timer? _likePopTimer;
+  int _likePopKey = 0;
+  final GlobalKey _postContentKey = GlobalKey();
 
   @override
   void didUpdateWidget(covariant PostCard oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.post != widget.post) _post = widget.post;
+  }
+
+  @override
+  void dispose() {
+    _likePopTimer?.cancel();
+    super.dispose();
+  }
+
+  void _showLikePop() {
+    final position = _doubleTapPosition;
+    if (position == null) return;
+
+    setState(() {
+      _likePopPosition = position;
+      _likePopKey++;
+    });
+    _likePopTimer?.cancel();
+    _likePopTimer = Timer(const Duration(milliseconds: 700), () {
+      if (mounted) setState(() => _likePopPosition = null);
+    });
+
+    if (!_post.likedByMe && !_busy) _like();
   }
 
   Future<void> _like() async {
@@ -63,6 +95,23 @@ class _PostCardState extends State<PostCard> {
   Future<void> _repost() async {
     if (_busy) return;
     final next = !_post.repostedByMe;
+    var thoughts = '';
+    if (next) {
+      final result = await showDialog<String>(
+        context: context,
+        builder: (_) => const _PostTextDialog(
+          title: 'Repost',
+          label: 'Add your thoughts',
+          hint: 'What do you think about this?',
+          submitLabel: 'Repost',
+          minLines: 2,
+          maxLines: 4,
+          maxLength: 500,
+        ),
+      );
+      if (result == null || !mounted) return;
+      thoughts = result;
+    }
     final previous = _post;
     setState(() {
       _busy = true;
@@ -72,7 +121,7 @@ class _PostCardState extends State<PostCard> {
       );
     });
     try {
-      await widget.repository.setReposted(_post, next);
+      await widget.repository.setReposted(_post, next, thoughts: thoughts);
     } catch (_) {
       if (mounted) {
         setState(() => _post = previous);
@@ -123,33 +172,17 @@ class _PostCardState extends State<PostCard> {
   }
 
   Future<void> _apply() async {
-    final controller = TextEditingController();
     final text = await showDialog<String>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Introduce yourself'),
-        content: TextField(
-          controller: controller,
-          minLines: 3,
-          maxLines: 5,
-          maxLength: 800,
-          decoration: const InputDecoration(
-            hintText: 'Tell them why you are interested…',
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, controller.text),
-            child: const Text('Send interest'),
-          ),
-        ],
+      builder: (_) => const _PostTextDialog(
+        title: 'Introduce yourself',
+        hint: 'Tell them why you are interested…',
+        submitLabel: 'Send interest',
+        minLines: 3,
+        maxLines: 5,
+        maxLength: 800,
       ),
     );
-    controller.dispose();
     if (text == null) return;
     setState(() => _busy = true);
     try {
@@ -277,272 +310,599 @@ class _PostCardState extends State<PostCard> {
   @override
   Widget build(BuildContext context) {
     final post = _post;
-    return Container(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 10),
-      decoration: BoxDecoration(
-        border: Border(
-          bottom: BorderSide(color: Colors.white.withValues(alpha: 0.09)),
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onDoubleTapDown: (details) {
+        final renderObject = _postContentKey.currentContext?.findRenderObject();
+        if (renderObject is RenderBox && renderObject.hasSize) {
+          _doubleTapPosition = renderObject.globalToLocal(
+            details.globalPosition,
+          );
+        } else {
+          _doubleTapPosition = Offset.zero;
+        }
+      },
+      onDoubleTap: _showLikePop,
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 10),
+        decoration: BoxDecoration(
+          color: post.repostInfo == null ? null : const Color(0xFF191817),
+          border: Border(
+            bottom: BorderSide(color: Colors.white.withValues(alpha: 0.09)),
+            left: post.repostInfo == null
+                ? BorderSide.none
+                : const BorderSide(color: Color(0xFF329CFF), width: 2),
+          ),
         ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (post.postKind == 'opportunity') ...[
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 5,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (post.repostInfo case final repost?) ...[
+              Container(
+                margin: const EdgeInsets.only(bottom: 8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 8,
+                ),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF329CFF).withValues(alpha: 0.09),
+                  border: Border.all(
+                    color: const Color(0xFF329CFF).withValues(alpha: 0.28),
                   ),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF329CFF).withValues(alpha: 0.1),
-                    border: Border.all(
-                      color: const Color(0xFF329CFF).withValues(alpha: 0.3),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Row(
+                  children: [
+                    const LucideIcon(
+                      LucideIconType.repeat2,
+                      size: 16,
+                      color: Color(0xFF78BBFF),
+                      strokeWidth: 1.8,
                     ),
-                    borderRadius: BorderRadius.circular(30),
-                  ),
-                  child: Text(
-                    _opportunityLabel(post.opportunityKind),
-                    style: const TextStyle(
-                      color: Color(0xFF329CFF),
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-                if (post.opportunityStatus != null &&
-                    post.opportunityStatus != 'open')
-                  _Chip(
-                    post.opportunityStatus == 'filled' ? 'Filled' : 'Paused',
-                  ),
-              ],
-            ),
-            if (post.opportunityTitle?.isNotEmpty ?? false) ...[
-              const SizedBox(height: 8),
-              Text(
-                post.opportunityTitle!,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                  height: 1.5,
-                ),
-              ),
-            ],
-            if (post.opportunityRole?.isNotEmpty ?? false) ...[
-              const SizedBox(height: 2),
-              Text(
-                [
-                  post.opportunityRole!,
-                  if (post.opportunityCommitment?.isNotEmpty ?? false)
-                    _humanize(post.opportunityCommitment!),
-                  if (post.opportunityWorkMode?.isNotEmpty ?? false)
-                    post.opportunityWorkMode!.replaceAll('_', ' '),
-                  if (post.opportunityLocation?.isNotEmpty ?? false)
-                    post.opportunityLocation!,
-                ].join(' · '),
-                style: const TextStyle(
-                  color: Color(0xFFAAA49D),
-                  fontSize: 12,
-                  height: 1.6,
-                ),
-              ),
-            ],
-            if (post.opportunitySkills.isNotEmpty) ...[
-              const SizedBox(height: 6),
-              Wrap(
-                spacing: 6,
-                runSpacing: 6,
-                children: post.opportunitySkills.map(_Chip.new).toList(),
-              ),
-            ],
-            if (post.opportunityCompensation?.isNotEmpty ?? false) ...[
-              const SizedBox(height: 6),
-              Text(
-                'Compensation: ${post.opportunityCompensation}',
-                style: const TextStyle(color: Color(0xFFD0CBC5), fontSize: 12),
-              ),
-            ],
-            const SizedBox(height: 10),
-          ],
-          Row(
-            children: [
-              InkWell(
-                borderRadius: BorderRadius.circular(40),
-                onTap: () => widget.openProfile(post.authorId),
-                child: CreatorAvatar(
-                  url: post.avatarUrl,
-                  name: post.author,
-                  radius: 20,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: InkWell(
-                  onTap: () => widget.openProfile(post.authorId),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        post.author,
-                        style: const TextStyle(
-                          fontSize: 14,
-                          height: 1.2,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      Text(
-                        post.authorBio.trim().isEmpty
-                            ? 'No bio yet'
-                            : post.authorBio.trim().replaceAll(
-                                RegExp(r'\s+'),
-                                ' ',
-                              ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        '${repost.name} reposted this post',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: const Color(0xFFAAA49D),
+                        style: const TextStyle(
+                          color: Color(0xFFE6F3FF),
                           fontSize: 12,
-                          height: 1.35,
+                          fontWeight: FontWeight.w500,
                         ),
                       ),
-                    ],
-                  ),
+                    ),
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 7,
+                        vertical: 3,
+                      ),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF329CFF).withValues(alpha: 0.16),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: const Text(
+                        'REPOST',
+                        style: TextStyle(
+                          color: Color(0xFF78BBFF),
+                          fontSize: 9,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 0.5,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
-              PopupMenuButton<String>(
-                icon: const Icon(Icons.more_horiz, size: 20),
-                onSelected: (value) {
-                  if (value == 'delete') {
-                    _delete();
-                  } else {
-                    _moderate(value);
-                  }
-                },
-                itemBuilder: (_) => post.isMine
-                    ? const [
-                        PopupMenuItem(
-                          value: 'delete',
-                          child: Text('Delete post'),
+              if (repost.thoughts.isNotEmpty)
+                Container(
+                  width: double.infinity,
+                  margin: const EdgeInsets.only(bottom: 10),
+                  padding: const EdgeInsets.fromLTRB(10, 8, 10, 9),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.035),
+                    border: Border(
+                      left: BorderSide(
+                        color: const Color(0xFF329CFF).withValues(alpha: 0.55),
+                        width: 2,
+                      ),
+                    ),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(
+                    repost.thoughts,
+                    style: const TextStyle(
+                      color: Color(0xFFEEEAE5),
+                      fontSize: 14,
+                      height: 1.55,
+                    ),
+                  ),
+                ),
+            ],
+            if (post.postKind == 'opportunity') ...[
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 5,
+                    ),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF329CFF).withValues(alpha: 0.1),
+                      border: Border.all(
+                        color: const Color(0xFF329CFF).withValues(alpha: 0.3),
+                      ),
+                      borderRadius: BorderRadius.circular(30),
+                    ),
+                    child: Text(
+                      _opportunityLabel(post.opportunityKind),
+                      style: const TextStyle(
+                        color: Color(0xFF329CFF),
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                  if (post.opportunityStatus != null &&
+                      post.opportunityStatus != 'open')
+                    _Chip(
+                      post.opportunityStatus == 'filled' ? 'Filled' : 'Paused',
+                    ),
+                ],
+              ),
+              if (post.opportunityTitle?.isNotEmpty ?? false) ...[
+                const SizedBox(height: 8),
+                Text(
+                  post.opportunityTitle!,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    height: 1.5,
+                  ),
+                ),
+              ],
+              if (post.opportunityRole?.isNotEmpty ?? false) ...[
+                const SizedBox(height: 2),
+                Text(
+                  [
+                    post.opportunityRole!,
+                    if (post.opportunityCommitment?.isNotEmpty ?? false)
+                      _humanize(post.opportunityCommitment!),
+                    if (post.opportunityWorkMode?.isNotEmpty ?? false)
+                      post.opportunityWorkMode!.replaceAll('_', ' '),
+                    if (post.opportunityLocation?.isNotEmpty ?? false)
+                      post.opportunityLocation!,
+                  ].join(' · '),
+                  style: const TextStyle(
+                    color: Color(0xFFAAA49D),
+                    fontSize: 12,
+                    height: 1.6,
+                  ),
+                ),
+              ],
+              if (post.opportunitySkills.isNotEmpty) ...[
+                const SizedBox(height: 6),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: post.opportunitySkills.map(_Chip.new).toList(),
+                ),
+              ],
+              if (post.opportunityCompensation?.isNotEmpty ?? false) ...[
+                const SizedBox(height: 6),
+                Text(
+                  'Compensation: ${post.opportunityCompensation}',
+                  style: const TextStyle(
+                    color: Color(0xFFD0CBC5),
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+              const SizedBox(height: 10),
+            ],
+            Row(
+              children: [
+                InkWell(
+                  borderRadius: BorderRadius.circular(40),
+                  onTap: () => widget.openProfile(post.authorId),
+                  child: CreatorAvatar(
+                    url: post.avatarUrl,
+                    name: post.author,
+                    radius: 20,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: InkWell(
+                    onTap: () => widget.openProfile(post.authorId),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Flexible(
+                              child: Text(
+                                post.author,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  fontSize: 14,
+                                  height: 1.2,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                            if (post.authorVerified) ...[
+                              const SizedBox(width: 4),
+                              const Icon(
+                                Icons.verified,
+                                size: 14,
+                                color: Color(0xFF329CFF),
+                              ),
+                            ],
+                          ],
                         ),
-                      ]
-                    : const [
-                        PopupMenuItem(
-                          value: 'hide',
-                          child: Text('Not interested'),
-                        ),
-                        PopupMenuItem(
-                          value: 'report',
-                          child: Text('Report post'),
-                        ),
-                        PopupMenuItem(
-                          value: 'block',
-                          child: Text('Block creator'),
+                        Text(
+                          post.authorBio.trim().isEmpty
+                              ? 'No bio yet'
+                              : post.authorBio.trim().replaceAll(
+                                  RegExp(r'\s+'),
+                                  ' ',
+                                ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: const Color(0xFFAAA49D),
+                            fontSize: 12,
+                            height: 1.35,
+                          ),
                         ),
                       ],
-              ),
-            ],
-          ),
-          if (post.body.isNotEmpty) ...[
-            const SizedBox(height: 8),
-            Text(
-              post.body,
-              style: const TextStyle(
-                color: Color(0xFFEEEAE5),
-                fontSize: 14,
-                height: 1.55,
-              ),
-            ),
-          ],
-          if (post.tags.isNotEmpty) ...[
-            const SizedBox(height: 9),
-            Wrap(
-              spacing: 8,
-              children: post.tags
-                  .map(
-                    (tag) => Text(
-                      tag,
-                      style: const TextStyle(color: Color(0xFF78BBFF)),
                     ),
-                  )
-                  .toList(),
-            ),
-          ],
-          if (post.mediaUrls.isNotEmpty) ...[
-            const SizedBox(height: 12),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(14),
-              child: AspectRatio(
-                aspectRatio: 1.35,
-                child: Image.network(
-                  post.mediaUrls.first,
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, _, _) => const ColoredBox(
-                    color: Colors.white10,
-                    child: Center(child: Icon(Icons.broken_image_outlined)),
                   ),
                 ),
-              ),
-            ),
-          ],
-          if (post.postKind == 'opportunity' && !post.isMine) ...[
-            const SizedBox(height: 12),
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton(
-                onPressed: post.interestStatus == null ? _apply : null,
-                child: Text(
-                  post.interestStatus == null
-                      ? 'I’m interested'
-                      : 'Interest ${post.interestStatus}',
+                PopupMenuButton<String>(
+                  icon: const Icon(Icons.more_horiz, size: 20),
+                  onSelected: (value) {
+                    if (value == 'delete') {
+                      _delete();
+                    } else if (value == 'remove-repost') {
+                      _removeRepost();
+                    } else {
+                      _moderate(value);
+                    }
+                  },
+                  itemBuilder: (_) => widget.allowRemoveRepost
+                      ? const [
+                          PopupMenuItem(
+                            value: 'remove-repost',
+                            child: Text('Remove repost'),
+                          ),
+                        ]
+                      : post.isMine
+                      ? const [
+                          PopupMenuItem(
+                            value: 'delete',
+                            child: Text('Delete post'),
+                          ),
+                        ]
+                      : const [
+                          PopupMenuItem(
+                            value: 'hide',
+                            child: Text('Not interested'),
+                          ),
+                          PopupMenuItem(
+                            value: 'report',
+                            child: Text('Report post'),
+                          ),
+                          PopupMenuItem(
+                            value: 'block',
+                            child: Text('Block creator'),
+                          ),
+                        ],
                 ),
-              ),
+              ],
             ),
-          ],
-          const SizedBox(height: 2),
-          Row(
-            children: [
-              _Action(
-                icon: post.likedByMe ? Icons.favorite : Icons.favorite_border,
-                active: post.likedByMe,
-                label: '${post.likes}',
-                onTap: _like,
-              ),
-              const SizedBox(width: 14),
-              _Action(
-                icon: Icons.mode_comment_outlined,
-                label: '${post.comments}',
-                onTap: _comments,
-              ),
-              const SizedBox(width: 14),
-              _Action(
-                icon: Icons.repeat_rounded,
-                active: post.repostedByMe,
-                label: '${post.reposts}',
-                onTap: _repost,
-              ),
-              const Spacer(),
-              IconButton(
-                tooltip: 'Share post',
-                onPressed: _share,
-                icon: const Icon(Icons.share_outlined, size: 18),
-                color: const Color(0xFFA9A39C),
-                visualDensity: VisualDensity.compact,
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints.tightFor(
-                  width: 34,
-                  height: 34,
-                ),
+            if (post.body.isNotEmpty ||
+                post.tags.isNotEmpty ||
+                post.mediaUrls.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Stack(
+                key: _postContentKey,
+                clipBehavior: Clip.none,
+                children: [
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (post.body.isNotEmpty)
+                        Text(
+                          post.body,
+                          style: const TextStyle(
+                            color: Color(0xFFEEEAE5),
+                            fontSize: 14,
+                            height: 1.55,
+                          ),
+                        ),
+                      if (post.tags.isNotEmpty) ...[
+                        const SizedBox(height: 9),
+                        Wrap(
+                          spacing: 8,
+                          children: post.tags
+                              .map(
+                                (tag) => Text(
+                                  tag,
+                                  style: const TextStyle(
+                                    color: Color(0xFF78BBFF),
+                                  ),
+                                ),
+                              )
+                              .toList(),
+                        ),
+                      ],
+                      for (final mediaUrl in post.mediaUrls) ...[
+                        const SizedBox(height: 12),
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(14),
+                          child: post.mediaType == 'video'
+                              ? InlineVideo(url: mediaUrl)
+                              : AspectRatio(
+                                  aspectRatio: 1,
+                                  child: Image.network(
+                                    mediaUrl,
+                                    fit: BoxFit.cover,
+                                    errorBuilder: (_, _, _) => const ColoredBox(
+                                      color: Colors.white10,
+                                      child: Center(
+                                        child: Icon(
+                                          Icons.broken_image_outlined,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                        ),
+                      ],
+                    ],
+                  ),
+                  if (_likePopPosition case final position?)
+                    Positioned(
+                      left: position.dx - 38,
+                      top: position.dy - 38,
+                      child: IgnorePointer(
+                        child: TweenAnimationBuilder<double>(
+                          key: ValueKey(_likePopKey),
+                          tween: Tween(begin: 0.0, end: 1.0),
+                          duration: const Duration(milliseconds: 650),
+                          builder: (context, progress, child) => Opacity(
+                            opacity: TweenSequence<double>([
+                              TweenSequenceItem(
+                                tween: Tween(begin: 0.0, end: 1.0).chain(
+                                  CurveTween(curve: const Cubic(0, 0, 0.58, 1)),
+                                ),
+                                weight: 35,
+                              ),
+                              TweenSequenceItem(
+                                tween: ConstantTween(1.0),
+                                weight: 30,
+                              ),
+                              TweenSequenceItem(
+                                tween: Tween(begin: 1.0, end: 0.0).chain(
+                                  CurveTween(curve: const Cubic(0, 0, 0.58, 1)),
+                                ),
+                                weight: 35,
+                              ),
+                            ]).transform(progress),
+                            child: Transform.scale(
+                              scale: TweenSequence<double>([
+                                TweenSequenceItem(
+                                  tween: Tween(begin: 0.2, end: 1.2).chain(
+                                    CurveTween(
+                                      curve: const Cubic(0, 0, 0.58, 1),
+                                    ),
+                                  ),
+                                  weight: 35,
+                                ),
+                                TweenSequenceItem(
+                                  tween: Tween(begin: 1.2, end: 1.0).chain(
+                                    CurveTween(
+                                      curve: const Cubic(0, 0, 0.58, 1),
+                                    ),
+                                  ),
+                                  weight: 30,
+                                ),
+                                TweenSequenceItem(
+                                  tween: Tween(begin: 1.0, end: 0.8).chain(
+                                    CurveTween(
+                                      curve: const Cubic(0, 0, 0.58, 1),
+                                    ),
+                                  ),
+                                  weight: 35,
+                                ),
+                              ]).transform(progress),
+                              child: child,
+                            ),
+                          ),
+                          child: const LucideHeart(size: 76),
+                        ),
+                      ),
+                    ),
+                ],
               ),
             ],
-          ),
-        ],
+            if (post.postKind == 'opportunity' && !post.isMine) ...[
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                child: post.interestStatus == 'accepted'
+                    ? OutlinedButton.icon(
+                        onPressed: _messageCreator,
+                        icon: const Icon(Icons.chat_bubble_outline, size: 17),
+                        label: const Text('Message creator'),
+                      )
+                    : FilledButton(
+                        onPressed: post.interestStatus == null && !_busy
+                            ? _apply
+                            : null,
+                        child: Text(
+                          post.interestStatus == null
+                              ? 'I’m interested'
+                              : 'Interest ${post.interestStatus}',
+                        ),
+                      ),
+              ),
+            ],
+            const SizedBox(height: 2),
+            Row(
+              children: [
+                _Action(
+                  icon: post.likedByMe ? Icons.favorite : Icons.favorite_border,
+                  active: post.likedByMe,
+                  label: '${post.likes}',
+                  onTap: _like,
+                ),
+                const SizedBox(width: 14),
+                _Action(
+                  icon: Icons.mode_comment_outlined,
+                  label: '${post.comments}',
+                  onTap: _comments,
+                ),
+                const SizedBox(width: 14),
+                _Action(
+                  icon: Icons.repeat_rounded,
+                  active: post.repostedByMe,
+                  label: '${post.reposts}',
+                  onTap: _repost,
+                ),
+                const Spacer(),
+                IconButton(
+                  tooltip: 'Share post',
+                  onPressed: _share,
+                  icon: const Icon(Icons.share_outlined, size: 18),
+                  color: const Color(0xFFA9A39C),
+                  visualDensity: VisualDensity.compact,
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints.tightFor(
+                    width: 34,
+                    height: 34,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }
+
+  Future<void> _removeRepost() async {
+    if (_busy || !widget.allowRemoveRepost) return;
+    setState(() => _busy = true);
+    try {
+      await widget.repository.setReposted(_post, false);
+      widget.onDeleted?.call();
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not remove this repost.')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _messageCreator() async {
+    try {
+      final conversationId = await widget.repository.startConversation(
+        _post.authorId,
+      );
+      if (!mounted) return;
+      await Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => ChatScreen(
+            repository: widget.repository,
+            conversationId: conversationId,
+            participant: Creator(
+              id: _post.authorId,
+              name: _post.author,
+              handle: _post.handle,
+              bio: _post.authorBio,
+              avatarUrl: _post.avatarUrl,
+              verified: _post.authorVerified,
+            ),
+          ),
+        ),
+      );
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not start a conversation.')),
+        );
+      }
+    }
+  }
+}
+
+class _PostTextDialog extends StatefulWidget {
+  const _PostTextDialog({
+    required this.title,
+    required this.hint,
+    required this.submitLabel,
+    required this.minLines,
+    required this.maxLines,
+    required this.maxLength,
+    this.label,
+  });
+
+  final String title;
+  final String? label;
+  final String hint;
+  final String submitLabel;
+  final int minLines;
+  final int maxLines;
+  final int maxLength;
+
+  @override
+  State<_PostTextDialog> createState() => _PostTextDialogState();
+}
+
+class _PostTextDialogState extends State<_PostTextDialog> {
+  final _controller = TextEditingController();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    title: Text(widget.title),
+    content: TextField(
+      controller: _controller,
+      minLines: widget.minLines,
+      maxLines: widget.maxLines,
+      maxLength: widget.maxLength,
+      decoration: InputDecoration(
+        labelText: widget.label,
+        hintText: widget.hint,
+      ),
+    ),
+    actions: [
+      TextButton(
+        onPressed: () => Navigator.pop(context),
+        child: const Text('Cancel'),
+      ),
+      FilledButton(
+        onPressed: () => Navigator.pop(context, _controller.text),
+        child: Text(widget.submitLabel),
+      ),
+    ],
+  );
 }
 
 class _Action extends StatelessWidget {

@@ -6,6 +6,8 @@ import '../data/repository.dart';
 import '../models.dart';
 import '../widgets.dart';
 import 'chat_screen.dart';
+import 'collabs_screen.dart';
+import 'post_detail_screen.dart';
 import 'profile_screen.dart';
 
 typedef DbRow = Map<String, dynamic>;
@@ -19,7 +21,13 @@ class NotificationsScreen extends StatefulWidget {
 }
 
 class _NotificationsScreenState extends State<NotificationsScreen> {
-  late Future<List<DbRow>> _future = widget.repository.loadNotifications();
+  late Future<SocialNotificationPage> _future = widget.repository
+      .loadNotificationPage();
+  final List<DbRow> _additionalNotifications = [];
+  String? _cursorCreatedAt;
+  String? _cursorId;
+  bool _hasMore = false;
+  bool _loadingMore = false;
   Timer? _refreshTimer;
   String? _error;
 
@@ -38,8 +46,67 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     super.dispose();
   }
 
-  void _refresh() =>
-      setState(() => _future = widget.repository.loadNotifications());
+  Future<void> _refresh() async {
+    late final Future<SocialNotificationPage> future;
+    setState(() {
+      _additionalNotifications.clear();
+      _cursorCreatedAt = null;
+      _cursorId = null;
+      _hasMore = false;
+      _loadingMore = false;
+      _error = null;
+      future = widget.repository.loadNotificationPage();
+      _future = future;
+    });
+    try {
+      final page = await future;
+      if (!mounted || future != _future) return;
+      setState(() {
+        _cursorCreatedAt = page.cursorCreatedAt;
+        _cursorId = page.cursorId;
+        _hasMore = page.hasMore;
+      });
+    } catch (_) {
+      // The FutureBuilder displays the notification error state.
+    }
+  }
+
+  Future<void> _loadMore() async {
+    if (!_hasMore ||
+        _loadingMore ||
+        _cursorCreatedAt == null ||
+        _cursorId == null) {
+      return;
+    }
+    final future = _future;
+    final createdAt = _cursorCreatedAt!;
+    final id = _cursorId!;
+    setState(() {
+      _loadingMore = true;
+      _error = null;
+    });
+    try {
+      final page = await widget.repository.loadNotificationPage(
+        beforeCreatedAt: createdAt,
+        beforeId: id,
+      );
+      if (!mounted || future != _future) return;
+      setState(() {
+        _additionalNotifications.addAll(page.notifications);
+        _cursorCreatedAt = page.cursorCreatedAt;
+        _cursorId = page.cursorId;
+        _hasMore = page.hasMore;
+      });
+    } catch (_) {
+      if (mounted && future == _future) {
+        setState(() => _error = 'Could not load older activity.');
+      }
+    } finally {
+      if (mounted && future == _future) {
+        setState(() => _loadingMore = false);
+      }
+    }
+  }
 
   Future<void> _markAll(List<DbRow> rows) async {
     try {
@@ -60,7 +127,11 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
 
   Future<void> _markAllFromCurrentList() async {
     try {
-      await _markAll(await _future);
+      final page = await _future;
+      await _markAll([
+        ...page.notifications,
+        ..._additionalNotifications,
+      ]);
     } catch (_) {
       if (mounted) {
         setState(
@@ -81,6 +152,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       );
       final actor = rowValue(row['actor']);
       final actorId = stringValue(row['actor_id']);
+      final type = stringValue(row['notification_type']);
       if (row['conversation_id'] != null) {
         final participant = Creator.fromRow({'id': actorId, ...actor});
         await Navigator.of(context).push(
@@ -89,6 +161,66 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
               repository: widget.repository,
               conversationId: stringValue(row['conversation_id']),
               participant: participant,
+            ),
+          ),
+        );
+      } else if (type == 'collab_interest') {
+        await Navigator.of(context).push(
+          MaterialPageRoute<void>(
+            builder: (_) => CollabsScreen(
+              repository: widget.repository,
+              initialTab: 1,
+              postOpportunity: () {},
+              openProfile: (id) => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => ProfileScreen(
+                    repository: widget.repository,
+                    userId: id,
+                    isSelf: id == widget.repository.userId,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+      } else if (type == 'collab_accepted' && actorId.isNotEmpty) {
+        final conversationId = await widget.repository.startConversation(
+          actorId,
+        );
+        if (!mounted) return;
+        await Navigator.of(context).push(
+          MaterialPageRoute<void>(
+            builder: (_) => ChatScreen(
+              repository: widget.repository,
+              conversationId: conversationId,
+              participant: Creator.fromRow({'id': actorId, ...actor}),
+            ),
+          ),
+        );
+      } else if (type == 'collab_declined') {
+        await Navigator.of(context).push(
+          MaterialPageRoute<void>(
+            builder: (_) => CollabsScreen(
+              repository: widget.repository,
+              postOpportunity: () {},
+              openProfile: (id) => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => ProfileScreen(
+                    repository: widget.repository,
+                    userId: id,
+                    isSelf: id == widget.repository.userId,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+      } else if (stringValue(row['post_id']).isNotEmpty) {
+        await Navigator.of(context).push(
+          MaterialPageRoute<void>(
+            builder: (_) => PostDetailScreen(
+              repository: widget.repository,
+              postId: stringValue(row['post_id']),
             ),
           ),
         );
@@ -143,7 +275,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       ],
     ),
     body: PageFrame(
-      child: FutureBuilder<List<DbRow>>(
+    child: FutureBuilder<SocialNotificationPage>(
         future: _future,
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting &&
@@ -164,7 +296,16 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
               ),
             );
           }
-          final rows = snapshot.data ?? [];
+          final page = snapshot.data;
+          if (page == null) {
+            return const Center(child: Text('Notifications are unavailable.'));
+          }
+          if (_cursorCreatedAt == null && page.hasMore) {
+            _cursorCreatedAt = page.cursorCreatedAt;
+            _cursorId = page.cursorId;
+            _hasMore = page.hasMore;
+          }
+          final rows = [...page.notifications, ..._additionalNotifications];
           return Column(
             children: [
               if (_error != null) InlineNotice(text: _error!, isError: true),
@@ -172,7 +313,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                 child: rows.isEmpty
                     ? const Center(child: Text('You are all caught up.'))
                     : RefreshIndicator(
-                        onRefresh: () async => _refresh(),
+                        onRefresh: _refresh,
                         child: ListView.separated(
                           itemCount: rows.length,
                           separatorBuilder: (_, _) =>
@@ -185,31 +326,57 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                               'Someone',
                             );
                             final isUnread = row['read_at'] == null;
+                            final message = _message(
+                              stringValue(row['notification_type']),
+                              name,
+                              row,
+                            );
                             return ListTile(
                               onTap: () => _open(row),
                               leading: Stack(
+                                clipBehavior: Clip.none,
                                 children: [
                                   CreatorAvatar(
                                     url: actor['avatar_url'] as String?,
                                     name: name,
                                     radius: 22,
                                   ),
-                                  if (isUnread)
-                                    const Positioned(
-                                      right: 0,
-                                      top: 0,
-                                      child: CircleAvatar(
-                                        radius: 5,
-                                        backgroundColor: Color(0xFF329CFF),
+                                  Positioned(
+                                    right: -3,
+                                    bottom: -3,
+                                    child: Container(
+                                      width: 20,
+                                      height: 20,
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFF329CFF),
+                                        shape: BoxShape.circle,
+                                        border: Border.all(
+                                          color: const Color(0xFF141312),
+                                          width: 2,
+                                        ),
+                                      ),
+                                      child: Icon(
+                                        _notificationIcon(
+                                          stringValue(row['notification_type']),
+                                        ),
+                                        size: 10,
+                                        color: Colors.white,
                                       ),
                                     ),
+                                  ),
                                 ],
                               ),
-                              title: Text(
-                                _message(
-                                  stringValue(row['notification_type']),
-                                  name,
-                                  row,
+                              title: Text.rich(
+                                TextSpan(
+                                  children: [
+                                    TextSpan(
+                                      text: name,
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                    TextSpan(text: message.substring(name.length)),
+                                  ],
                                 ),
                                 style: TextStyle(
                                   fontWeight: isUnread
@@ -224,15 +391,43 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                                   style: const TextStyle(color: Colors.white54),
                                 ),
                               ),
+                              trailing: isUnread
+                                  ? const CircleAvatar(
+                                      radius: 4,
+                                      backgroundColor: Color(0xFFF43F5E),
+                                    )
+                                  : null,
                             );
                           },
                         ),
                       ),
               ),
+              if (_hasMore || _loadingMore)
+                Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      child: _loadingMore
+                          ? const Center(child: CircularProgressIndicator())
+                          : TextButton(
+                              onPressed: _loadMore,
+                              child: const Text('Load older activity'),
+                            ),
+                ),
             ],
           );
         },
       ),
     ),
   );
+
+  IconData _notificationIcon(String type) => switch (type) {
+    'like' => Icons.favorite,
+    'follow' => Icons.person_add_alt_1,
+    'comment' => Icons.chat_bubble_outline,
+    'repost' => Icons.repeat,
+    'collab_interest' ||
+    'collab_accepted' ||
+    'collab_declined' => Icons.handshake_outlined,
+    'message' => Icons.chat_bubble_outline,
+    _ => Icons.notifications_none,
+  };
 }

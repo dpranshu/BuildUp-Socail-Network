@@ -6,6 +6,34 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models.dart';
 
+class SocialPostPage {
+  const SocialPostPage({
+    required this.posts,
+    required this.hasMore,
+    this.cursorCreatedAt,
+    this.cursorId,
+  });
+
+  final List<SocialPost> posts;
+  final bool hasMore;
+  final String? cursorCreatedAt;
+  final String? cursorId;
+}
+
+class SocialNotificationPage {
+  const SocialNotificationPage({
+    required this.notifications,
+    required this.hasMore,
+    this.cursorCreatedAt,
+    this.cursorId,
+  });
+
+  final List<JsonMap> notifications;
+  final bool hasMore;
+  final String? cursorCreatedAt;
+  final String? cursorId;
+}
+
 class AppRepository {
   AppRepository(this.client);
 
@@ -23,11 +51,44 @@ class AppRepository {
       'opportunity_status,likes_count,comments_count,reposts_count,created_at,'
       'author:profiles!posts_author_id_fkey(display_name,handle,bio,avatar_url,is_verified)';
 
+  Future<SocialPost?> loadPost(String postId) async {
+    final row = await client
+        .from('posts')
+        .select(postSelect)
+        .eq('id', postId)
+        .isFilter('deleted_at', null)
+        .maybeSingle();
+    if (row == null) return null;
+    return (await _mapPosts([row], client.auth.currentUser?.id)).single;
+  }
+
   Future<List<SocialPost>> loadFeed({
     String mode = 'for-you',
     bool collabs = false,
     String? opportunityKind,
+  }) async => (await loadFeedPage(
+    mode: mode,
+    collabs: collabs,
+    opportunityKind: opportunityKind,
+    pageSize: 50,
+  )).posts;
+
+  Future<SocialPostPage> loadFeedPage({
+    String mode = 'for-you',
+    bool collabs = false,
+    String? opportunityKind,
+    int pageSize = 10,
+    String? beforeCreatedAt,
+    String? beforeId,
   }) async {
+    if (pageSize < 1 || pageSize > 50) {
+      throw const FormatException('Feed page size must be between 1 and 50.');
+    }
+    if ((beforeCreatedAt == null) != (beforeId == null) ||
+        (beforeCreatedAt != null &&
+            DateTime.tryParse(beforeCreatedAt) == null)) {
+      throw const FormatException('Invalid feed cursor.');
+    }
     final user = client.auth.currentUser;
     List<String>? followingIds;
     final hiddenPostIds = <String>[];
@@ -41,7 +102,9 @@ class AppRepository {
         followingIds = follows
             .map((row) => stringValue(row['following_id']))
             .toList();
-        if (followingIds.isEmpty) return [];
+        if (followingIds.isEmpty) {
+          return const SocialPostPage(posts: [], hasMore: false);
+        }
       }
       final preferences = await Future.wait([
         client.from('hidden_posts').select('post_id').eq('user_id', user.id),
@@ -73,15 +136,30 @@ class AppRepository {
       query = query.eq('post_kind', 'post');
     }
     if (followingIds != null) query = query.inFilter('author_id', followingIds);
-    final rows = await query.order('created_at', ascending: false).limit(50);
-    final visibleRows = rows
-        .where(
-          (row) =>
-              !hiddenPostIds.contains(stringValue(row['id'])) &&
-              !blockedIds.contains(stringValue(row['author_id'])),
-        )
-        .toList();
-    return _mapPosts(visibleRows, user?.id);
+    if (blockedIds.isNotEmpty) {
+      query = query.not('author_id', 'in', '(${blockedIds.join(',')})');
+    }
+    if (hiddenPostIds.isNotEmpty) {
+      query = query.not('id', 'in', '(${hiddenPostIds.join(',')})');
+    }
+    if (beforeCreatedAt != null && beforeId != null) {
+      query = query.or(
+        'created_at.lt.$beforeCreatedAt,and(created_at.eq.$beforeCreatedAt,id.lt.$beforeId)',
+      );
+    }
+    final rows = await query
+        .order('created_at', ascending: false)
+        .order('id', ascending: false)
+        .limit(pageSize + 1);
+    final hasMore = rows.length > pageSize;
+    final pageRows = rows.take(pageSize).toList();
+    final lastRow = pageRows.isEmpty ? null : pageRows.last;
+    return SocialPostPage(
+      posts: await _mapPosts(pageRows, user?.id),
+      hasMore: hasMore,
+      cursorCreatedAt: hasMore ? stringValue(lastRow?['created_at']) : null,
+      cursorId: hasMore ? stringValue(lastRow?['id']) : null,
+    );
   }
 
   Future<List<SocialPost>> searchPostsAndOpportunities(String query) async {
@@ -161,32 +239,56 @@ class AppRepository {
     required String body,
     required List<String> tags,
     XFile? image,
+    String mediaType = 'text',
+    List<String> mediaUrls = const [],
     String postKind = 'post',
     String? opportunityKind,
     String? title,
     String? role,
     List<String> skills = const [],
     String commitment = 'flexible',
-    String workMode = 'remote',
+    String workMode = 'flexible',
     String location = '',
     String compensation = '',
   }) async {
     final uid = userId;
     final content = body.trim();
-    if (content.length > 3000) {
+    final normalizedMediaUrls = mediaUrls
+        .map((url) => url.trim())
+        .where((url) => url.isNotEmpty)
+        .toList();
+    if (content.length > 1000) {
       throw const FormatException(
-        'Post text must be 3,000 characters or fewer.',
+        'Post text must be 1,000 characters or fewer.',
       );
     }
-    if (content.isEmpty && image == null) {
-      throw const FormatException('Write something or add an image.');
+    if (!{'text', 'image', 'video'}.contains(mediaType)) {
+      throw const FormatException('Choose text, image, or video.');
+    }
+    if (normalizedMediaUrls.length > (image == null ? 4 : 3) ||
+        normalizedMediaUrls.any((value) {
+          final uri = Uri.tryParse(value);
+          return uri == null || uri.scheme != 'https' || uri.host.isEmpty;
+        })) {
+      throw const FormatException('Use up to four valid HTTPS media links.');
+    }
+    if ((mediaType == 'video' && normalizedMediaUrls.isEmpty) ||
+        (mediaType == 'image' && image == null) ||
+        (mediaType == 'text' &&
+            (image != null || normalizedMediaUrls.isNotEmpty))) {
+      throw const FormatException('Choose media that matches the post type.');
+    }
+    if (content.isEmpty && image == null && normalizedMediaUrls.isEmpty) {
+      throw const FormatException('Write something or add media.');
     }
     if (postKind != 'post' && postKind != 'opportunity') {
       throw const FormatException('Choose a valid post type.');
     }
     if (postKind == 'opportunity' &&
         ((title?.trim().length ?? 0) < 3 ||
+            (title?.trim().length ?? 0) > 120 ||
             (role?.trim().length ?? 0) < 2 ||
+            (role?.trim().length ?? 0) > 100 ||
             !{
               'cofounder',
               'collaborator',
@@ -201,13 +303,15 @@ class AppRepository {
               'part_time',
               'full_time',
             }.contains(commitment) ||
+            skills.any((skill) => skill.trim().length > 50) ||
+            location.trim().length > 120 ||
+            compensation.trim().length > 160 ||
             ((workMode == 'hybrid' || workMode == 'in_person') &&
                 location.trim().length < 2))) {
       throw const FormatException(
         'Add a valid opportunity type, title, and role; in-person roles also need a location.',
       );
     }
-    final mediaUrls = <String>[];
     String? uploadedPath;
     if (image != null) {
       final file = File(image.path);
@@ -235,7 +339,6 @@ class AppRepository {
             ),
           );
       uploadedPath = path;
-      mediaUrls.add(client.storage.from('avatars').getPublicUrl(path));
     }
 
     final normalizedTags = tags
@@ -248,8 +351,12 @@ class AppRepository {
       'author_id': uid,
       'body': content,
       'tags': normalizedTags,
-      'media_urls': mediaUrls,
-      'media_type': image == null ? 'text' : 'image',
+      'media_urls': [
+        if (image != null)
+          client.storage.from('avatars').getPublicUrl(uploadedPath!),
+        ...normalizedMediaUrls,
+      ],
+      'media_type': image != null ? 'image' : mediaType,
       'post_kind': postKind,
       'opportunity_kind': postKind == 'opportunity' ? opportunityKind : null,
       'opportunity_title': postKind == 'opportunity' ? title?.trim() : null,
@@ -420,18 +527,75 @@ class AppRepository {
     if (row == null) {
       throw const PostgrestException(message: 'Creator profile not found.');
     }
-    return Creator.fromRow(row);
+    final profile = Map<String, dynamic>.from(row);
+    final currentUser = client.auth.currentUser;
+    if (profile['avatar_url'] == null && currentUser?.id == profile['id']) {
+      profile['avatar_url'] =
+          currentUser?.userMetadata?['avatar_url'] ??
+          currentUser?.userMetadata?['picture'];
+    }
+    return Creator.fromRow(profile);
   }
 
   Future<List<SocialPost>> loadProfilePosts(String profileId) async {
-    final rows = await client
-        .from('posts')
-        .select(postSelect)
-        .eq('author_id', profileId)
-        .isFilter('deleted_at', null)
-        .order('created_at', ascending: false)
-        .limit(30);
-    return _mapPosts(rows, client.auth.currentUser?.id);
+    final results = await Future.wait([
+      client
+          .from('posts')
+          .select(postSelect)
+          .eq('author_id', profileId)
+          .isFilter('deleted_at', null)
+          .order('created_at', ascending: false)
+          .limit(30),
+      client
+          .from('reposts')
+          .select('post_id,thoughts,created_at')
+          .eq('user_id', profileId)
+          .order('created_at', ascending: false)
+          .limit(30),
+    ]);
+    final posts = await _mapPosts(results[0], client.auth.currentUser?.id);
+    final repostRows = results[1];
+    final repostIds = repostRows
+        .map((row) => stringValue(row['post_id']))
+        .where((id) => id.isNotEmpty)
+        .toSet()
+        .toList();
+    if (repostIds.isEmpty) return posts;
+    final repostPosts = await _mapPosts(
+      await client
+          .from('posts')
+          .select(postSelect)
+          .inFilter('id', repostIds)
+          .isFilter('deleted_at', null),
+      client.auth.currentUser?.id,
+    );
+    final postsById = {for (final post in repostPosts) post.id: post};
+    final profile = await client
+        .from('profiles')
+        .select('display_name,handle')
+        .eq('id', profileId)
+        .maybeSingle();
+    final repostName = stringValue(profile?['display_name'], 'Creator');
+    final repostHandle = stringValue(profile?['handle'], '@creator');
+    final reposts = <SocialPost>[];
+    for (final row in repostRows) {
+      final post = postsById[stringValue(row['post_id'])];
+      if (post == null) continue;
+      reposts.add(
+        post.copyWith(
+          createdAt: stringValue(row['created_at'], post.createdAt),
+          repostInfo: SocialRepostInfo(
+            name: repostName,
+            handle: repostHandle,
+            thoughts: stringValue(row['thoughts']),
+          ),
+        ),
+      );
+    }
+    return ([
+      ...posts,
+      ...reposts,
+    ]..sort((a, b) => b.createdAt.compareTo(a.createdAt))).take(30).toList();
   }
 
   Future<List<JsonMap>> loadProjects(String profileId) async => await client
@@ -493,6 +657,7 @@ class AppRepository {
     required String height,
     required List<String> skills,
     required List<String> interests,
+    String? avatarUrl,
   }) async {
     final normalizedName = name.trim();
     final normalizedHandle = handle
@@ -512,36 +677,60 @@ class AppRepository {
     if (age != null && (age < 13 || age > 120)) {
       throw const FormatException('Age must be between 13 and 120.');
     }
-    await client
-        .from('profiles')
-        .update({
-          'display_name': normalizedName,
-          'handle': '@$normalizedHandle',
-          'role': _limit(role, 80),
-          'bio': _limit(bio, 500),
-          'location': _limit(location, 120),
-          'pronouns': _limit(pronouns, 40),
-          'backstory': _limit(backstory, 1500),
-          'age': age,
-          'height': _limit(height, 24),
-          'skills': skills
-              .map((value) => value.trim())
-              .where((value) => value.isNotEmpty)
-              .take(20)
-              .toList(),
-          'interests': interests
-              .map((value) => value.trim())
-              .where((value) => value.isNotEmpty)
-              .take(20)
-              .toList(),
-        })
-        .eq('id', userId);
+    final normalizedAvatarUrl = avatarUrl?.trim() ?? '';
+    if (normalizedAvatarUrl.isNotEmpty &&
+        (Uri.tryParse(normalizedAvatarUrl)?.scheme != 'https' ||
+            Uri.tryParse(normalizedAvatarUrl)?.host.isEmpty != false)) {
+      throw const FormatException('Avatar URL must start with https://.');
+    }
+    try {
+      final updated = await client
+          .from('profiles')
+          .update({
+            'display_name': normalizedName,
+            'handle': '@$normalizedHandle',
+            'role': _limit(role, 80),
+            'bio': _limit(bio, 500),
+            'location': _limit(location, 120),
+            'pronouns': _limit(pronouns, 40),
+            'backstory': _limit(backstory, 1500),
+            'age': age,
+            'height': _limit(height, 24),
+            'avatar_url': normalizedAvatarUrl.isEmpty
+                ? null
+                : normalizedAvatarUrl,
+            'skills': skills
+                .map((value) => value.trim())
+                .where((value) => value.isNotEmpty)
+                .take(20)
+                .toList(),
+            'interests': interests
+                .map((value) => value.trim())
+                .where((value) => value.isNotEmpty)
+                .take(20)
+                .toList(),
+          })
+          .eq('id', userId)
+          .select('id')
+          .maybeSingle();
+      if (updated == null) {
+        throw const PostgrestException(
+          message: 'Your profile could not be updated.',
+        );
+      }
+    } on PostgrestException catch (error) {
+      if (error.code == '23505') {
+        throw const FormatException('That username is already taken.');
+      }
+      rethrow;
+    }
   }
 
   Future<void> updateAvatar(XFile image) async {
     final uid = userId;
     final file = File(image.path);
-    if (await file.length() > 5 * 1024 * 1024) {
+    final length = await file.length();
+    if (length == 0 || length > 5 * 1024 * 1024) {
       throw const FormatException('Profile photos must be smaller than 5 MB.');
     }
     final extension = image.name.toLowerCase().split('.').last;
@@ -551,16 +740,80 @@ class AppRepository {
       'webp' => 'image/webp',
       _ => throw const FormatException('Choose a JPEG, PNG, or WebP image.'),
     };
-    final path = '$uid/${DateTime.now().microsecondsSinceEpoch}.$extension';
-    await client.storage
-        .from('avatars')
-        .upload(
-          path,
-          file,
-          fileOptions: FileOptions(cacheControl: '31536000', contentType: mime),
+    final bucket = client.storage.from('avatars');
+    final current = await client
+        .from('profiles')
+        .select('avatar_url')
+        .eq('id', uid)
+        .maybeSingle();
+    if (current == null) {
+      throw const PostgrestException(
+        message: 'Your profile could not be found.',
+      );
+    }
+    final oldUrl = stringValue(current['avatar_url']);
+    final path =
+        '$uid/${DateTime.now().microsecondsSinceEpoch}_${Random.secure().nextInt(1 << 32)}.$extension';
+    await bucket.upload(
+      path,
+      file,
+      fileOptions: FileOptions(cacheControl: '31536000', contentType: mime),
+    );
+    final url = bucket.getPublicUrl(path);
+    try {
+      final updated = await client
+          .from('profiles')
+          .update({'avatar_url': url})
+          .eq('id', uid)
+          .select('id')
+          .maybeSingle();
+      if (updated == null) {
+        throw const PostgrestException(
+          message: 'Your profile photo could not be saved.',
         );
-    final url = client.storage.from('avatars').getPublicUrl(path);
-    await client.from('profiles').update({'avatar_url': url}).eq('id', uid);
+      }
+    } catch (error) {
+      try {
+        await bucket.remove([path]);
+      } catch (cleanupError) {
+        throw StateError(
+          'Profile photo could not be saved ($error), and uploaded photo cleanup failed ($cleanupError).',
+        );
+      }
+      rethrow;
+    }
+    final previousPath = _ownedAvatarPath(oldUrl, uid);
+    if (previousPath != null && previousPath != path) {
+      try {
+        await bucket.remove([previousPath]);
+      } catch (_) {
+        throw StateError(
+          'Profile photo updated, but the previous photo could not be removed.',
+        );
+      }
+    }
+  }
+
+  String? _ownedAvatarPath(String url, String userId) {
+    final uri = Uri.tryParse(url);
+    final avatarOrigin = Uri.parse(
+      client.storage.from('avatars').getPublicUrl(''),
+    ).origin;
+    if (uri == null || uri.origin != avatarOrigin) {
+      return null;
+    }
+    final bucketMarker = '/storage/v1/object/public/avatars/';
+    final markerIndex = uri.path.indexOf(bucketMarker);
+    if (markerIndex < 0) return null;
+    late final String path;
+    try {
+      path = Uri.decodeComponent(
+        uri.path.substring(markerIndex + bucketMarker.length),
+      );
+    } on FormatException {
+      return null;
+    }
+    return path.startsWith('$userId/') ? path : null;
   }
 
   Future<void> setFollowing(String profileId, bool follow) async {
@@ -593,6 +846,80 @@ class AppRepository {
         .eq('following_id', profileId)
         .maybeSingle();
     return row != null;
+  }
+
+  Future<SocialConnectionPage> loadConnections({
+    required String profileId,
+    required String type,
+    String? beforeCreatedAt,
+    String? beforeId,
+    int pageSize = 20,
+  }) async {
+    if (type != 'followers' && type != 'following') {
+      throw const FormatException('Choose followers or following.');
+    }
+    if (pageSize < 1 || pageSize > 50) {
+      throw const FormatException(
+        'Connection page size must be between 1 and 50.',
+      );
+    }
+    if ((beforeCreatedAt == null) != (beforeId == null) ||
+        (beforeCreatedAt != null &&
+            DateTime.tryParse(beforeCreatedAt) == null)) {
+      throw const FormatException('Invalid connections cursor.');
+    }
+
+    final personRelation = type == 'followers'
+        ? 'person:profiles!follows_follower_id_fkey'
+        : 'person:profiles!follows_following_id_fkey';
+    var query = client
+        .from('follows')
+        .select(
+          'id,created_at,$personRelation(id,display_name,handle,role,bio,avatar_url,is_verified,followers_count,following_count)',
+        )
+        .eq(type == 'followers' ? 'following_id' : 'follower_id', profileId);
+    if (beforeCreatedAt != null && beforeId != null) {
+      query = query.or(
+        'created_at.lt.$beforeCreatedAt,and(created_at.eq.$beforeCreatedAt,id.lt.$beforeId)',
+      );
+    }
+    final rows = await query
+        .order('created_at', ascending: false)
+        .order('id', ascending: false)
+        .limit(pageSize + 1);
+    final hasMore = rows.length > pageSize;
+    final pageRows = rows.take(pageSize).toList();
+    final creatorRows = pageRows
+        .map((row) => rowValue(row['person']))
+        .where((row) => row['id'] != null)
+        .toList();
+    final ids = creatorRows.map((row) => stringValue(row['id'])).toList();
+    final followedIds = ids.isEmpty
+        ? <String>{}
+        : (await client
+                  .from('follows')
+                  .select('following_id')
+                  .eq('follower_id', userId)
+                  .inFilter('following_id', ids))
+              .map((row) => stringValue(row['following_id']))
+              .toSet();
+    final currentUserId = userId;
+    final lastRow = pageRows.isEmpty ? null : pageRows.last;
+
+    return SocialConnectionPage(
+      people: creatorRows
+          .map(
+            (row) => SocialConnection(
+              creator: Creator.fromRow(row),
+              isFollowing: followedIds.contains(stringValue(row['id'])),
+              isCurrentUser: row['id'] == currentUserId,
+            ),
+          )
+          .toList(),
+      hasMore: hasMore,
+      cursorCreatedAt: hasMore ? stringValue(lastRow?['created_at']) : null,
+      cursorId: hasMore ? stringValue(lastRow?['id']) : null,
+    );
   }
 
   Future<List<Creator>> searchCreators(String query) async {
@@ -895,16 +1222,21 @@ class AppRepository {
     return rows;
   }
 
-  Future<void> sendMessage(String conversationId, String body) async {
+  Future<JsonMap> sendMessage(String conversationId, String body) async {
     final text = body.trim();
     if (text.isEmpty || text.length > 4000) {
       throw const FormatException('Write a message under 4,000 characters.');
     }
-    await client.from('messages').insert({
-      'conversation_id': conversationId,
-      'sender_id': userId,
-      'body': text,
-    });
+    final message = await client
+        .from('messages')
+        .insert({
+          'conversation_id': conversationId,
+          'sender_id': userId,
+          'body': text,
+        })
+        .select('id,conversation_id,sender_id,body,created_at')
+        .single();
+    return Map<String, dynamic>.from(message);
   }
 
   Future<void> markConversationRead(String conversationId) async {
@@ -931,14 +1263,51 @@ class AppRepository {
     }
   }
 
-  Future<List<JsonMap>> loadNotifications() async => await client
-      .from('notifications')
-      .select(
-        'id,actor_id,notification_type,post_id,conversation_id,created_at,read_at,actor:profiles!notifications_actor_id_fkey(display_name,handle,avatar_url),post:posts!notifications_post_id_fkey(body)',
-      )
-      .eq('recipient_id', userId)
-      .order('created_at', ascending: false)
-      .limit(50);
+  Future<SocialNotificationPage> loadNotificationPage({
+    String? beforeCreatedAt,
+    String? beforeId,
+    int pageSize = 20,
+  }) async {
+    if (pageSize < 1 || pageSize > 50) {
+      throw const FormatException(
+        'Notification page size must be between 1 and 50.',
+      );
+    }
+    if ((beforeCreatedAt == null) != (beforeId == null) ||
+        (beforeCreatedAt != null &&
+            DateTime.tryParse(beforeCreatedAt) == null)) {
+      throw const FormatException('Invalid notification cursor.');
+    }
+    var query = client
+        .from('notifications')
+        .select(
+          'id,actor_id,notification_type,post_id,conversation_id,created_at,read_at,actor:profiles!notifications_actor_id_fkey(display_name,handle,avatar_url),post:posts!notifications_post_id_fkey(body)',
+        )
+        .eq('recipient_id', userId);
+    if (beforeCreatedAt != null && beforeId != null) {
+      query = query.or(
+        'created_at.lt.$beforeCreatedAt,and(created_at.eq.$beforeCreatedAt,id.lt.$beforeId)',
+      );
+    }
+    final rows = await query
+        .order('created_at', ascending: false)
+        .order('id', ascending: false)
+        .limit(pageSize + 1);
+    final hasMore = rows.length > pageSize;
+    final pageRows = rows.take(pageSize).toList();
+    final lastRow = pageRows.isEmpty ? null : pageRows.last;
+    return SocialNotificationPage(
+      notifications: pageRows
+          .map((row) => Map<String, dynamic>.from(row))
+          .toList(),
+      hasMore: hasMore,
+      cursorCreatedAt: hasMore ? stringValue(lastRow?['created_at']) : null,
+      cursorId: hasMore ? stringValue(lastRow?['id']) : null,
+    );
+  }
+
+  Future<List<JsonMap>> loadNotifications() async =>
+      (await loadNotificationPage(pageSize: 50)).notifications;
 
   Future<void> markNotificationRead(String id) async {
     await client

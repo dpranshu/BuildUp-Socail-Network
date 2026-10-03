@@ -28,6 +28,7 @@ class Creator {
     this.avatarUrl,
     this.verified = false,
     this.followers = 0,
+    this.followingCount = 0,
     this.following = false,
   });
 
@@ -46,6 +47,7 @@ class Creator {
   final String? avatarUrl;
   final bool verified;
   final int followers;
+  final int followingCount;
   final bool following;
 
   factory Creator.fromRow(JsonMap row, {bool following = false}) => Creator(
@@ -64,8 +66,41 @@ class Creator {
     avatarUrl: row['avatar_url'] as String?,
     verified: row['is_verified'] == true,
     followers: intValue(row['followers_count']),
+    followingCount: intValue(row['following_count']),
     following: following,
   );
+}
+
+class SocialConnection {
+  const SocialConnection({
+    required this.creator,
+    required this.isFollowing,
+    required this.isCurrentUser,
+  });
+
+  final Creator creator;
+  final bool isFollowing;
+  final bool isCurrentUser;
+
+  SocialConnection copyWith({bool? isFollowing}) => SocialConnection(
+    creator: creator,
+    isFollowing: isFollowing ?? this.isFollowing,
+    isCurrentUser: isCurrentUser,
+  );
+}
+
+class SocialConnectionPage {
+  const SocialConnectionPage({
+    required this.people,
+    required this.hasMore,
+    this.cursorCreatedAt,
+    this.cursorId,
+  });
+
+  final List<SocialConnection> people;
+  final bool hasMore;
+  final String? cursorCreatedAt;
+  final String? cursorId;
 }
 
 class SocialPost {
@@ -75,6 +110,7 @@ class SocialPost {
     required this.author,
     required this.handle,
     this.authorBio = '',
+    this.authorVerified = false,
     required this.body,
     required this.createdAt,
     this.avatarUrl,
@@ -98,6 +134,7 @@ class SocialPost {
     this.likedByMe = false,
     this.repostedByMe = false,
     this.interestStatus,
+    this.repostInfo,
   });
 
   final String id;
@@ -105,6 +142,7 @@ class SocialPost {
   final String author;
   final String handle;
   final String authorBio;
+  final bool authorVerified;
   final String body;
   final String createdAt;
   final String? avatarUrl;
@@ -128,6 +166,7 @@ class SocialPost {
   final bool likedByMe;
   final bool repostedByMe;
   final String? interestStatus;
+  final SocialRepostInfo? repostInfo;
 
   factory SocialPost.fromRow(
     JsonMap row, {
@@ -143,6 +182,7 @@ class SocialPost {
       author: stringValue(author['display_name'], 'Creator'),
       handle: stringValue(author['handle'], '@creator'),
       authorBio: stringValue(author['bio']),
+      authorVerified: author['is_verified'] == true,
       avatarUrl: author['avatar_url'] as String?,
       body: stringValue(row['body']),
       createdAt: stringValue(row['created_at']),
@@ -166,6 +206,9 @@ class SocialPost {
       likedByMe: liked,
       repostedByMe: reposted,
       interestStatus: interestStatus,
+      repostInfo: row['repost_info'] == null
+          ? null
+          : SocialRepostInfo.fromRow(rowValue(row['repost_info'])),
     );
   }
 
@@ -177,14 +220,17 @@ class SocialPost {
     bool? repostedByMe,
     String? interestStatus,
     String? opportunityStatus,
+    String? createdAt,
+    SocialRepostInfo? repostInfo,
   }) => SocialPost(
     id: id,
     authorId: authorId,
     author: author,
     handle: handle,
     authorBio: authorBio,
+    authorVerified: authorVerified,
     body: body,
-    createdAt: createdAt,
+    createdAt: createdAt ?? this.createdAt,
     avatarUrl: avatarUrl,
     tags: tags,
     mediaUrls: mediaUrls,
@@ -206,6 +252,25 @@ class SocialPost {
     likedByMe: likedByMe ?? this.likedByMe,
     repostedByMe: repostedByMe ?? this.repostedByMe,
     interestStatus: interestStatus ?? this.interestStatus,
+    repostInfo: repostInfo ?? this.repostInfo,
+  );
+}
+
+class SocialRepostInfo {
+  const SocialRepostInfo({
+    required this.name,
+    required this.handle,
+    required this.thoughts,
+  });
+
+  final String name;
+  final String handle;
+  final String thoughts;
+
+  factory SocialRepostInfo.fromRow(JsonMap row) => SocialRepostInfo(
+    name: stringValue(row['name'], 'Creator'),
+    handle: stringValue(row['handle'], '@creator'),
+    thoughts: stringValue(row['thoughts']),
   );
 }
 

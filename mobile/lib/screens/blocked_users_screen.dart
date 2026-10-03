@@ -16,8 +16,11 @@ class _BlockedUsersScreenState extends State<BlockedUsersScreen> {
   late Future<List<JsonMap>> _future = widget.repository.loadBlockedUsers();
   String? _error;
 
-  void _refresh() =>
-      setState(() => _future = widget.repository.loadBlockedUsers());
+  void _refresh() {
+    setState(() {
+      _future = widget.repository.loadBlockedUsers();
+    });
+  }
 
   Future<void> _unblock(String id) async {
     try {

@@ -28,6 +28,7 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _sending = false;
   String? _error;
   String? _lastMessageId;
+  final List<Map<String, dynamic>> _sentMessages = [];
   late final Stream<List<Map<String, dynamic>>> _messages = Supabase
       .instance
       .client
@@ -57,8 +58,19 @@ class _ChatScreenState extends State<ChatScreen> {
       _error = null;
     });
     try {
-      await widget.repository.sendMessage(widget.conversationId, body);
+      final message = await widget.repository.sendMessage(
+        widget.conversationId,
+        body,
+      );
+      if (!mounted) return;
+      setState(() {
+        _sentMessages.removeWhere(
+          (sent) => stringValue(sent['id']) == stringValue(message['id']),
+        );
+        _sentMessages.add(message);
+      });
       _controller.clear();
+      _scrollToBottom();
       await _markRead();
     } on FormatException catch (error) {
       if (mounted) setState(() => _error = error.message);
@@ -86,23 +98,26 @@ class _ChatScreenState extends State<ChatScreen> {
 
   void _maybeRead(List<Map<String, dynamic>> messages) {
     if (messages.isEmpty) return;
-    final last = messages.last;
-    final id = stringValue(last['id']);
+    final newest = messages.first;
+    final id = stringValue(newest['id']);
     if (id != _lastMessageId) {
       _lastMessageId = id;
-      if (last['sender_id'] != widget.repository.userId) {
+      if (newest['sender_id'] != widget.repository.userId) {
         unawaited(_markRead());
       }
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (_scrollController.hasClients) {
-          _scrollController.animateTo(
-            _scrollController.position.maxScrollExtent,
-            duration: const Duration(milliseconds: 180),
-            curve: Curves.easeOut,
-          );
-        }
-      });
+      _scrollToBottom();
     }
+  }
+
+  void _scrollToBottom() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_scrollController.hasClients) return;
+      _scrollController.animateTo(
+        _scrollController.position.minScrollExtent,
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeOut,
+      );
+    });
   }
 
   @override
@@ -140,7 +155,26 @@ class _ChatScreenState extends State<ChatScreen> {
               if (!snapshot.hasData) {
                 return const LoadingPanel(label: 'Loading messages…');
               }
-              final messages = snapshot.data!;
+              final messagesById = {
+                for (final message in snapshot.data!)
+                  stringValue(message['id']): message,
+              };
+              for (final message in _sentMessages) {
+                messagesById.putIfAbsent(
+                  stringValue(message['id']),
+                  () => message,
+                );
+              }
+              final messages = messagesById.values.toList()
+                ..sort((first, second) {
+                  final timestampOrder = stringValue(
+                    second['created_at'],
+                  ).compareTo(stringValue(first['created_at']));
+                  if (timestampOrder != 0) return timestampOrder;
+                  return stringValue(
+                    second['id'],
+                  ).compareTo(stringValue(first['id']));
+                });
               _maybeRead(messages);
               if (messages.isEmpty) {
                 return const Center(
@@ -150,6 +184,7 @@ class _ChatScreenState extends State<ChatScreen> {
               final uid = widget.repository.userId;
               return ListView.builder(
                 controller: _scrollController,
+                reverse: true,
                 padding: const EdgeInsets.all(16),
                 itemCount: messages.length,
                 itemBuilder: (context, index) {

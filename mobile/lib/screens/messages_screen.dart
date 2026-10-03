@@ -35,7 +35,9 @@ class _MessagesScreenState extends State<MessagesScreen> {
 
   void _refresh() {
     if (mounted) {
-      setState(() => _future = widget.repository.loadConversations());
+      setState(() {
+        _future = widget.repository.loadConversations();
+      });
     }
   }
 

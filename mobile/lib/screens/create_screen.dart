@@ -29,11 +29,13 @@ class _CreateScreenState extends State<CreateScreen> {
   final _skills = TextEditingController();
   final _location = TextEditingController();
   final _compensation = TextEditingController();
+  final _mediaUrls = TextEditingController();
   final _picker = ImagePicker();
   late String _kind = widget.initialKind;
-  String _opportunityType = 'collaborator';
+  String _opportunityType = '';
   String _commitment = 'flexible';
-  String _workMode = 'remote';
+  String _workMode = 'flexible';
+  String _mediaType = 'text';
   XFile? _image;
   bool _busy = false;
   String? _error;
@@ -47,6 +49,7 @@ class _CreateScreenState extends State<CreateScreen> {
     _skills.dispose();
     _location.dispose();
     _compensation.dispose();
+    _mediaUrls.dispose();
     super.dispose();
   }
 
@@ -57,7 +60,12 @@ class _CreateScreenState extends State<CreateScreen> {
         imageQuality: 86,
         maxWidth: 2200,
       );
-      if (image != null && mounted) setState(() => _image = image);
+      if (image != null && mounted) {
+        setState(() {
+          _mediaType = 'image';
+          _image = image;
+        });
+      }
     } catch (_) {
       if (mounted) {
         setState(() => _error = 'Could not open your photo library.');
@@ -75,6 +83,12 @@ class _CreateScreenState extends State<CreateScreen> {
         body: _body.text,
         tags: _tags.text.split(RegExp(r'[, ]+')),
         image: _image,
+        mediaType: _mediaType,
+        mediaUrls: _mediaUrls.text
+            .split(RegExp(r'\s+'))
+            .map((url) => url.trim())
+            .where((url) => url.isNotEmpty)
+            .toList(),
         postKind: _kind,
         opportunityKind: _kind == 'opportunity' ? _opportunityType : null,
         title: _title.text,
@@ -154,6 +168,7 @@ class _CreateScreenState extends State<CreateScreen> {
             initialValue: _opportunityType,
             decoration: const InputDecoration(labelText: 'Type'),
             items: const [
+              DropdownMenuItem(value: '', child: Text('Choose one')),
               DropdownMenuItem(
                 value: 'collaborator',
                 child: Text('Collaboration'),
@@ -219,7 +234,7 @@ class _CreateScreenState extends State<CreateScreen> {
           controller: _body,
           minLines: 5,
           maxLines: 10,
-          maxLength: 3000,
+          maxLength: 1000,
           decoration: InputDecoration(
             labelText: _kind == 'opportunity'
                 ? 'Describe the opportunity'
@@ -235,14 +250,71 @@ class _CreateScreenState extends State<CreateScreen> {
           ),
         ),
         const SizedBox(height: 12),
-        OutlinedButton.icon(
-          onPressed: _busy ? null : _pickImage,
-          icon: const Icon(Icons.add_photo_alternate_outlined),
-          label: Text(
-            _image == null ? 'Add a photo' : 'Choose a different photo',
-          ),
+        SegmentedButton<String>(
+          segments: const [
+            ButtonSegment(
+              value: 'text',
+              label: Text('Text'),
+              icon: Icon(Icons.notes_outlined),
+            ),
+            ButtonSegment(
+              value: 'image',
+              label: Text('Image'),
+              icon: Icon(Icons.image_outlined),
+            ),
+            ButtonSegment(
+              value: 'video',
+              label: Text('Video'),
+              icon: Icon(Icons.videocam_outlined),
+            ),
+          ],
+          selected: {_mediaType},
+          onSelectionChanged: _busy
+              ? null
+              : (selection) {
+                  final type = selection.first;
+                  if (type == 'image') {
+                    setState(() {
+                      _mediaType = type;
+                      _image = null;
+                      _mediaUrls.clear();
+                    });
+                    _pickImage();
+                  } else {
+                    setState(() {
+                      _mediaType = type;
+                      _image = null;
+                      if (type == 'text') _mediaUrls.clear();
+                    });
+                  }
+                },
         ),
-        if (_image != null)
+        if (_mediaType == 'video') ...[
+          const SizedBox(height: 10),
+          TextField(
+            controller: _mediaUrls,
+            minLines: 2,
+            maxLines: 4,
+            keyboardType: TextInputType.url,
+            onChanged: (_) => setState(() {}),
+            decoration: const InputDecoration(
+              labelText: 'Video URLs',
+              hintText: 'https://',
+              helperText: 'Add up to four HTTPS video URLs, one per line.',
+              alignLabelWithHint: true,
+            ),
+          ),
+        ],
+        if (_mediaType == 'image' && _image == null)
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: OutlinedButton.icon(
+              onPressed: _busy ? null : _pickImage,
+              icon: const Icon(Icons.add_photo_alternate_outlined),
+              label: const Text('Choose a photo'),
+            ),
+          ),
+        if (_mediaType == 'image' && _image != null)
           Padding(
             padding: const EdgeInsets.only(top: 10),
             child: ClipRRect(
@@ -263,7 +335,11 @@ class _CreateScreenState extends State<CreateScreen> {
         if (_error != null) InlineNotice(text: _error!, isError: true),
         const SizedBox(height: 12),
         FilledButton.icon(
-          onPressed: _busy ? null : _submit,
+          onPressed: _busy ||
+                  (_mediaType == 'image' && _image == null) ||
+                  (_mediaType == 'video' && _mediaUrls.text.trim().isEmpty)
+              ? null
+              : _submit,
           icon: _busy
               ? const SizedBox.square(
                   dimension: 18,

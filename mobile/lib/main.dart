@@ -28,6 +28,8 @@ class BuildupApp extends StatelessWidget {
     const foreground = Color(0xFFF5F2EE);
     const muted = Color(0xFFAAA49D);
     const blue = Color(0xFF329CFF);
+    final baseTextTheme = ThemeData(brightness: Brightness.dark).textTheme
+        .apply(fontFamily: 'Arial');
     final scheme = ColorScheme.fromSeed(
       seedColor: blue,
       brightness: Brightness.dark,
@@ -39,6 +41,29 @@ class BuildupApp extends StatelessWidget {
       theme: ThemeData(
         useMaterial3: true,
         brightness: Brightness.dark,
+        fontFamily: 'Arial',
+        textTheme: baseTextTheme.copyWith(
+          displayLarge: baseTextTheme.displayLarge?.copyWith(
+            fontFamily: 'Geist',
+          ),
+          displayMedium: baseTextTheme.displayMedium?.copyWith(
+            fontFamily: 'Geist',
+          ),
+          displaySmall: baseTextTheme.displaySmall?.copyWith(
+            fontFamily: 'Geist',
+          ),
+          headlineLarge: baseTextTheme.headlineLarge?.copyWith(
+            fontFamily: 'Geist',
+          ),
+          headlineMedium: baseTextTheme.headlineMedium?.copyWith(
+            fontFamily: 'Geist',
+          ),
+          headlineSmall: baseTextTheme.headlineSmall?.copyWith(
+            fontFamily: 'Geist',
+          ),
+          titleLarge: baseTextTheme.titleLarge?.copyWith(fontFamily: 'Geist'),
+          titleMedium: baseTextTheme.titleMedium?.copyWith(fontFamily: 'Geist'),
+        ),
         scaffoldBackgroundColor: background,
         colorScheme: scheme,
         appBarTheme: const AppBarTheme(

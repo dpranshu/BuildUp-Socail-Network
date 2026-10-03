@@ -14,10 +14,12 @@ class CollabsScreen extends StatefulWidget {
     required this.repository,
     required this.openProfile,
     required this.postOpportunity,
+    this.initialTab = 0,
   });
   final AppRepository repository;
   final ValueChanged<String> openProfile;
   final VoidCallback postOpportunity;
+  final int initialTab;
 
   @override
   State<CollabsScreen> createState() => _CollabsScreenState();
@@ -25,8 +27,11 @@ class CollabsScreen extends StatefulWidget {
 
 class _CollabsScreenState extends State<CollabsScreen>
     with SingleTickerProviderStateMixin {
-  late final TabController _tabs = TabController(length: 2, vsync: this)
-    ..addListener(_tabChanged);
+  late final TabController _tabs = TabController(
+    length: 2,
+    vsync: this,
+    initialIndex: widget.initialTab == 1 ? 1 : 0,
+  )..addListener(_tabChanged);
   String _opportunityKind = 'all';
   late Future<List<SocialPost>> _opportunities = _loadOpportunities();
   late Future<List<AppRepositoryRow>> _myApplications = _loadApplications();
@@ -65,6 +70,7 @@ class _CollabsScreenState extends State<CollabsScreen>
   }
 
   void _refresh() {
+    if (!mounted) return;
     setState(() {
       _opportunities = _loadOpportunities();
       _myApplications = _loadApplications();
@@ -108,6 +114,7 @@ class _CollabsScreenState extends State<CollabsScreen>
           ),
         ),
       );
+      if (mounted) _refresh();
     } catch (_) {
       if (mounted) {
         setState(() => _error = 'Could not start a conversation.');
@@ -126,18 +133,18 @@ class _CollabsScreenState extends State<CollabsScreen>
   Future<void> _respond(String id, String status) async {
     try {
       await widget.repository.respondToInterest(id, status);
-      _refresh();
+      if (mounted) _refresh();
     } catch (error) {
-      setState(() => _error = error.toString());
+      if (mounted) setState(() => _error = error.toString());
     }
   }
 
   Future<void> _status(String id, String status) async {
     try {
       await widget.repository.updateOpportunityStatus(id, status);
-      _refresh();
+      if (mounted) _refresh();
     } catch (error) {
-      setState(() => _error = error.toString());
+      if (mounted) setState(() => _error = error.toString());
     }
   }
 
@@ -328,6 +335,8 @@ class _CollabsScreenState extends State<CollabsScreen>
                             onRefresh: _refresh,
                             respond: _respond,
                             changeStatus: _status,
+                            openProfile: widget.openProfile,
+                            messageCreator: _messageCreator,
                           ),
                           _ApplicationsList(
                             future: _myApplications,
@@ -786,11 +795,15 @@ class _ListingsList extends StatelessWidget {
     required this.onRefresh,
     required this.respond,
     required this.changeStatus,
+    required this.openProfile,
+    required this.messageCreator,
   });
   final Future<List<AppRepositoryRow>> future;
   final VoidCallback onRefresh;
   final Future<void> Function(String, String) respond;
   final Future<void> Function(String, String) changeStatus;
+  final ValueChanged<String> openProfile;
+  final ValueChanged<Creator> messageCreator;
 
   @override
   Widget build(BuildContext context) => FutureBuilder<List<AppRepositoryRow>>(
@@ -876,14 +889,51 @@ class _ListingsList extends StatelessWidget {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(
-                              stringValue(
-                                rowValue(interest['applicant'])['display_name'],
-                                'Creator',
-                              ),
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w700,
-                              ),
+                            Builder(
+                              builder: (context) {
+                                final applicant = rowValue(
+                                  interest['applicant'],
+                                );
+                                final creator = Creator.fromRow({
+                                  ...applicant,
+                                  'id': interest['applicant_id'],
+                                });
+                                return Row(
+                                  children: [
+                                    CreatorAvatar(
+                                      url: creator.avatarUrl,
+                                      name: creator.name,
+                                      radius: 18,
+                                    ),
+                                    const SizedBox(width: 9),
+                                    Expanded(
+                                      child: InkWell(
+                                        onTap: () => openProfile(creator.id),
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              creator.name,
+                                              style: const TextStyle(
+                                                fontWeight: FontWeight.w700,
+                                              ),
+                                            ),
+                                            if (creator.handle.isNotEmpty)
+                                              Text(
+                                                '${creator.handle}${creator.role.isEmpty ? '' : ' · ${creator.role}'}',
+                                                style: const TextStyle(
+                                                  color: Color(0xFFAAA49D),
+                                                  fontSize: 11,
+                                                ),
+                                              ),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                );
+                              },
                             ),
                             const SizedBox(height: 5),
                             Text(stringValue(interest['introduction'])),
@@ -904,9 +954,29 @@ class _ListingsList extends StatelessWidget {
                                       stringValue(interest['id']),
                                       'accepted',
                                     ),
-                                    child: const Text('Accept'),
+                                    child: const Text('Accept & connect'),
                                   ),
                                 ],
+                              )
+                            else if (stringValue(interest['status']) ==
+                                'accepted')
+                              OutlinedButton.icon(
+                                onPressed: () {
+                                  final applicant = rowValue(
+                                    interest['applicant'],
+                                  );
+                                  messageCreator(
+                                    Creator.fromRow({
+                                      ...applicant,
+                                      'id': interest['applicant_id'],
+                                    }),
+                                  );
+                                },
+                                icon: const Icon(
+                                  Icons.chat_bubble_outline,
+                                  size: 16,
+                                ),
+                                label: const Text('Message creator'),
                               )
                             else
                               _Status(stringValue(interest['status'])),
