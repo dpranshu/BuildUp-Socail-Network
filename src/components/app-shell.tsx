@@ -10,10 +10,8 @@ import { createClient } from "@/lib/supabase/client";
 
 const navItems = [
   { href: "/feed", label: "Home", icon: House },
-  { href: "/search", label: "Search", icon: Search },
   { href: "/collabs", label: "Collabs", icon: Handshake },
   { href: "/create", label: "Create", icon: Plus },
-  { href: "/notifications", label: "Notifications", icon: Bell },
   { href: "/messages", label: "Messages", icon: MessageCircle },
 ];
 
@@ -177,92 +175,107 @@ export function AppShell({
     <div className={`app-shell min-h-screen bg-[var(--background)] text-[var(--foreground)] ${hiddenChromePathname === pathname ? "chrome-hidden" : ""}`}>
       <header className="app-header sticky top-0 z-40">
         <div className="relative mx-auto flex h-[72px] max-w-[420px] items-center justify-center border-b border-white/[0.07] px-4 md:max-w-[598px]">
-          <Link
-            href="/profile"
-            aria-label="Your profile"
-            title="Your profile"
-            className="absolute left-5"
-          >
+          <Link href="/profile" aria-label="Your profile" title="Your profile" className="absolute left-5">
             <ProfileAvatar src={avatarUrl} alt="" className="h-[30px] w-[30px]" iconSize={17} />
           </Link>
           <Link href="/feed" aria-label="Buildup" className="flex h-7 w-[96px] items-center justify-center">
             <svg viewBox="0 0 140 36" role="img" aria-label="Buildup" className="h-full w-full overflow-visible">
-              <text
-                x="70"
-                y="28"
-                textAnchor="middle"
-                className="font-brand fill-white text-[30px] font-bold"
-              >
+              <text x="70" y="28" textAnchor="middle" className="font-brand fill-white text-[30px] font-bold">
                 Buildup
               </text>
             </svg>
           </Link>
-          {pathname === "/profile" && signedIn && (
-            <div className="absolute right-5">
-              <button
-                type="button"
-                aria-label="Profile settings"
-                title="Profile settings"
-                aria-haspopup="menu"
-                aria-expanded={settingsOpen}
-                onClick={() => {
-                  setSettingsOpen((open) => !open);
-                  setSignOutError("");
-                }}
-                className="flex h-9 w-9 items-center justify-center rounded-full text-[var(--muted)] hover:bg-white/[0.06] hover:text-white"
-              >
-                <Settings size={19} />
-              </button>
-              {settingsOpen && (
-                <div role="menu" className="absolute right-0 top-11 z-50 min-w-44 overflow-hidden rounded-md border hairline bg-[var(--surface)] p-1 shadow-xl">
-                  <Link
-                    href="/settings/blocked"
-                    role="menuitem"
-                    onClick={() => setSettingsOpen(false)}
-                    className="flex min-h-10 w-full items-center gap-2 rounded px-3 text-left text-sm text-white hover:bg-white/[0.06]"
-                  >
-                    <Ban size={16} />
-                    Blocked users
-                  </Link>
-                  <button
-                    type="button"
-                    role="menuitem"
-                    disabled={signingOut}
-                    onClick={() => void signOut()}
-                    className="flex min-h-10 w-full items-center gap-2 rounded px-3 text-left text-sm text-white hover:bg-white/[0.06] disabled:opacity-50"
-                  >
-                    <LogOut size={16} />
-                    {signingOut ? "Signing out…" : "Sign out"}
-                  </button>
-                  {signOutError && <p role="alert" className="px-3 py-2 text-xs text-rose-300">{signOutError}</p>}
-                </div>
+          <div className="absolute right-3 flex items-center gap-1 sm:right-5 sm:gap-2">
+            <Link
+              href="/search"
+              aria-label="Search"
+              title="Search"
+              className={`flex h-10 w-10 items-center justify-center rounded-full hover:bg-white/[0.06] ${pathname === "/search" ? "text-[var(--blue)]" : "text-[var(--muted)] hover:text-white"}`}
+            >
+              <Search size={21} />
+            </Link>
+            <Link
+              href="/notifications"
+              aria-label={unreadNotifications > 0 ? `Notifications, ${unreadNotifications} unread` : "Notifications"}
+              title="Notifications"
+              className={`relative flex h-10 w-10 items-center justify-center rounded-full hover:bg-white/[0.06] ${pathname === "/notifications" ? "text-[var(--blue)]" : "text-[var(--muted)] hover:text-white"}`}
+            >
+              <Bell size={21} />
+              {unreadNotifications > 0 && (
+                <span aria-hidden="true" className="absolute right-1 top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-500 px-1 text-[10px] font-bold leading-none text-white ring-2 ring-[var(--background)]">
+                  {unreadNotifications > 9 ? "9+" : unreadNotifications}
+                </span>
               )}
-            </div>
-          )}
+            </Link>
+            {pathname === "/profile" && signedIn && (
+              <div className="relative">
+                <button
+                  type="button"
+                  aria-label="Profile settings"
+                  title="Profile settings"
+                  aria-haspopup="menu"
+                  aria-expanded={settingsOpen}
+                  onClick={() => {
+                    setSettingsOpen((open) => !open);
+                    setSignOutError("");
+                  }}
+                  className="flex h-9 w-9 items-center justify-center rounded-full text-[var(--muted)] hover:bg-white/[0.06] hover:text-white"
+                >
+                  <Settings size={19} />
+                </button>
+                {settingsOpen && (
+                  <div role="menu" className="absolute right-0 top-11 z-50 min-w-44 overflow-hidden rounded-md border hairline bg-[var(--surface)] p-1 shadow-xl">
+                    <Link
+                      href="/settings/blocked"
+                      role="menuitem"
+                      onClick={() => setSettingsOpen(false)}
+                      className="flex min-h-10 w-full items-center gap-2 rounded px-3 text-left text-sm text-white hover:bg-white/[0.06]"
+                    >
+                      <Ban size={16} />
+                      Blocked users
+                    </Link>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      disabled={signingOut}
+                      onClick={() => void signOut()}
+                      className="flex min-h-10 w-full items-center gap-2 rounded px-3 text-left text-sm text-white hover:bg-white/[0.06] disabled:opacity-50"
+                    >
+                      <LogOut size={16} />
+                      {signingOut ? "Signing out…" : "Sign out"}
+                    </button>
+                    {signOutError && <p role="alert" className="px-3 py-2 text-xs text-rose-300">{signOutError}</p>}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       </header>
       <main className="mx-auto min-h-[calc(100vh-72px)] max-w-[420px] px-0 pb-28 sm:pb-20 md:max-w-[598px]">
         <div className="sr-only">{title}</div>
         {children}
       </main>
-      <nav aria-label="Primary" className="primary-nav mobile-nav fixed inset-x-0 bottom-0 z-40 grid grid-cols-6 border-t border-white/[0.08] bg-[#0d0f11]">
+      <nav aria-label="Primary" className="primary-nav mobile-nav fixed inset-x-0 bottom-0 z-40 grid grid-cols-4 border-t border-white/[0.08] bg-[#0d0f11]">
         {navItems.map(({ href, label, icon: Icon }) => {
-          const unread = href === "/messages" ? unreadMessages : href === "/notifications" ? unreadNotifications : 0;
+          const unread = href === "/messages" ? unreadMessages : 0;
           return (
             <Link
               key={href + label}
               href={href}
               aria-label={unread > 0 ? `${label}, ${unread} unread` : label}
+              aria-current={pathname === href ? "page" : undefined}
               className={`mobile-nav-link ${pathname === href ? "mobile-nav-active" : ""}`}
             >
               <span className="relative inline-flex">
-                <Icon size={22} strokeWidth={1.8} />
+                <Icon size={25} strokeWidth={1.9} />
                 {unread > 0 && (
-                  <span aria-hidden="true" className={`absolute -right-1.5 -top-1.5 flex min-h-2 min-w-2 items-center justify-center rounded-full bg-rose-500 text-[8px] font-bold text-white ring-2 ring-[#0d0f11] ${href === "/notifications" ? "px-1" : ""}`}>
-                    {href === "/notifications" && unread <= 9 ? unread : ""}
+                  <span aria-hidden="true" className="absolute -right-2 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-500 px-1 text-[10px] font-bold leading-none text-white ring-2 ring-[#0d0f11]">
+                    {unread > 9 ? "9+" : unread}
                   </span>
                 )}
               </span>
+              <span className="mobile-nav-label">{label}</span>
             </Link>
           );
         })}
