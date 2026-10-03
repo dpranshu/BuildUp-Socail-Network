@@ -4,12 +4,13 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AppShell } from "@/components/app-shell";
+import { CommentThread } from "@/components/comment-thread";
 import { ProfileAvatar } from "@/components/profile-avatar";
 import { PostCard } from "@/components/post-card";
 import { SharePostButton } from "@/components/share-post-button";
 import { usePostCountsRealtime } from "@/hooks/use-post-counts-realtime";
 import type { Comment, Post, Profile, Project } from "@/lib/types";
-import { BadgeCheck, Cake, Camera, ExternalLink, Heart, LoaderCircle, MapPin, MessageCircle, MoreHorizontal, Pencil, Plus, Repeat2, Ruler, Trash2, X } from "lucide-react";
+import { BadgeCheck, Cake, Camera, ExternalLink, Heart, LoaderCircle, MapPin, MessageCircle, MoreHorizontal, Pencil, Plus, Repeat2, Ruler, X } from "lucide-react";
 
 type ProfileTab = "posts" | "overview" | "projects";
 type ConnectionsType = "followers" | "following";
@@ -386,20 +387,20 @@ export default function ProfilePage({ handle }: { handle?: string }) {
     }
   }
 
-  async function submitPostComment(postId: string) {
-    const body = commentDraft.trim();
-    if (!body) return;
+  async function submitPostComment(postId: string, value = commentDraft, parentCommentId: string | null = null): Promise<boolean> {
+    const body = value.trim();
+    if (!body) return false;
     setMessage("");
     try {
       const response = await fetch(`/api/posts/${postId}/comments`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ body }),
+        body: JSON.stringify({ body, parentCommentId }),
       });
       const data = await response.json();
       if (response.status === 401) {
         router.push("/login");
-        return;
+        return false;
       }
       if (!response.ok) throw new Error(data.message ?? "Could not add comment.");
       setProfile((current) => current ? {
@@ -412,9 +413,11 @@ export default function ProfilePage({ handle }: { handle?: string }) {
             }
           : post),
       } : current);
-      setCommentDraft("");
+      if (parentCommentId === null) setCommentDraft("");
+      return true;
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Could not add comment.");
+      return false;
     }
   }
 
@@ -436,7 +439,9 @@ export default function ProfilePage({ handle }: { handle?: string }) {
           ? {
               ...post,
               comments: typeof data.comments === "number" ? data.comments : Math.max(0, post.comments - 1),
-              commentsPreview: post.commentsPreview.filter((item) => item.id !== comment.id),
+              commentsPreview: post.commentsPreview
+                .filter((item) => item.id !== comment.id)
+                .map((item) => item.parentCommentId === comment.id ? { ...item, parentCommentId: null } : item),
             }
           : post),
       } : current);
@@ -984,32 +989,15 @@ export default function ProfilePage({ handle }: { handle?: string }) {
               )}
               comments={openComments === post.id && (
                 <div className="mt-2 border-t hairline pt-3">
-                  <div className="space-y-3">
-                    {post.commentsPreview.map((comment) => (
-                      <div key={comment.id} className="flex items-start gap-2 text-xs">
-                        <div className="min-w-0 flex-1">
-                          <span className="font-semibold">{comment.author}</span>
-                          <span className="ml-2 text-[var(--muted)]">{comment.body}</span>
-                        </div>
-                        {comment.isMine && (
-                          <button
-                            type="button"
-                            aria-label="Delete comment"
-                            title="Delete comment"
-                            disabled={deletingCommentId === comment.id}
-                            onClick={() => void deletePostComment(post.id, comment)}
-                            className="shrink-0 text-[var(--muted)] hover:text-rose-300 disabled:opacity-50"
-                          >
-                            <Trash2 size={14} />
-                          </button>
-                        )}
-                      </div>
-                    ))}
-                    {post.commentsPreview.length === 0 && <p className="text-xs text-[var(--muted)]">No comments yet.</p>}
-                  </div>
-                  <form className="mt-3 flex gap-2" onSubmit={(event) => { event.preventDefault(); void submitPostComment(post.id); }}>
-                    <input aria-label="Write a comment" value={commentDraft} onChange={(event) => setCommentDraft(event.target.value)} maxLength={1000} placeholder="Write a reply" className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-[#77716b]" />
-                    <button disabled={!commentDraft.trim()} className="text-xs font-semibold text-[var(--blue)] disabled:opacity-40">Reply</button>
+                  <CommentThread
+                    comments={post.commentsPreview}
+                    deletingCommentId={deletingCommentId}
+                    onDelete={(comment) => void deletePostComment(post.id, comment)}
+                    onReply={(parentCommentId, body) => submitPostComment(post.id, body, parentCommentId)}
+                  />
+                  <form className="mt-4 flex items-center gap-2" onSubmit={(event) => { event.preventDefault(); void submitPostComment(post.id); }}>
+                    <input aria-label="Write a comment" value={commentDraft} onChange={(event) => setCommentDraft(event.target.value)} maxLength={1000} placeholder="Add a comment…" className="min-h-11 min-w-0 flex-1 rounded-xl border border-white/[0.08] bg-white/[0.03] px-3 text-sm text-white outline-none transition-colors placeholder:text-[#77716b] focus:border-white/20" />
+                    <button disabled={!commentDraft.trim()} className="min-h-11 rounded-xl bg-white px-4 text-sm font-semibold text-[#141312] disabled:opacity-40">Comment</button>
                   </form>
                 </div>
               )}

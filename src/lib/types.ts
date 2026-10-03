@@ -40,6 +40,7 @@ export type Post = {
 
 export type Comment = {
   id: string;
+  parentCommentId: string | null;
   author: string;
   handle: string;
   body: string;

@@ -129,10 +129,10 @@ export type Database = {
         Relationships: [Relation<"likes_post_id_fkey", ["post_id"], "posts">, Relation<"likes_user_id_fkey", ["user_id"], "profiles">];
       };
       comments: {
-        Row: { id: string; post_id: string; author_id: string; body: string; created_at: string };
-        Insert: { id?: string; post_id: string; author_id: string; body: string; created_at?: string };
-        Update: { id?: string; post_id?: string; author_id?: string; body?: string; created_at?: string };
-        Relationships: [Relation<"comments_post_id_fkey", ["post_id"], "posts">, Relation<"comments_author_id_fkey", ["author_id"], "profiles">];
+        Row: { id: string; post_id: string; author_id: string; parent_comment_id: string | null; body: string; created_at: string };
+        Insert: { id?: string; post_id: string; author_id: string; parent_comment_id?: string | null; body: string; created_at?: string };
+        Update: { id?: string; post_id?: string; author_id?: string; parent_comment_id?: string | null; body?: string; created_at?: string };
+        Relationships: [Relation<"comments_post_id_fkey", ["post_id"], "posts">, Relation<"comments_author_id_fkey", ["author_id"], "profiles">, Relation<"comments_parent_comment_id_fkey", ["parent_comment_id"], "comments">];
       };
       reposts: {
         Row: { id: string; post_id: string; user_id: string; thoughts: string; created_at: string };
