@@ -4,12 +4,13 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
-import { Ban, Bell, House, LogOut, MessageCircle, Plus, Search, Settings } from "lucide-react";
+import { Ban, Bell, Handshake, House, LogOut, MessageCircle, Plus, Search, Settings } from "lucide-react";
 import { ProfileAvatar } from "@/components/profile-avatar";
 
 const navItems = [
   { href: "/feed", label: "Home", icon: House },
   { href: "/search", label: "Search", icon: Search },
+  { href: "/collabs", label: "Collabs", icon: Handshake },
   { href: "/create", label: "Create", icon: Plus },
   { href: "/notifications", label: "Notifications", icon: Bell },
   { href: "/messages", label: "Messages", icon: MessageCircle },
@@ -167,7 +168,7 @@ export function AppShell({
         <div className="sr-only">{title}</div>
         {children}
       </main>
-      <nav aria-label="Primary" className="primary-nav mobile-nav fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t border-white/[0.08] bg-[#0d0f11]">
+      <nav aria-label="Primary" className="primary-nav mobile-nav fixed inset-x-0 bottom-0 z-40 grid grid-cols-6 border-t border-white/[0.08] bg-[#0d0f11]">
         {navItems.map(({ href, label, icon: Icon }) => (
           <Link
             key={href + label}

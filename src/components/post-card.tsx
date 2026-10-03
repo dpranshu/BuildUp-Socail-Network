@@ -3,6 +3,7 @@ import Link from "next/link";
 import { useEffect, useRef, useState, type MouseEvent, type ReactNode, type TouchEvent } from "react";
 import { BadgeCheck, Heart, MessageCircle, Repeat2, Share2 } from "lucide-react";
 import { ProfileAvatar } from "@/components/profile-avatar";
+import { getOpportunityLabel } from "@/lib/opportunities";
 import type { Post } from "@/lib/types";
 
 export function PostCard({
@@ -132,6 +133,11 @@ export function PostCard({
       )}
       {post.repostInfo?.thoughts && (
         <p className="mb-3 whitespace-pre-wrap text-[14px] leading-[1.55] text-[#eeeae5] md:text-base">{post.repostInfo.thoughts}</p>
+      )}
+      {post.postKind === "opportunity" && (
+        <p className="mb-2 inline-flex items-center rounded-full border border-[var(--blue)]/30 bg-[var(--blue)]/10 px-2.5 py-1 text-[11px] font-semibold text-[var(--blue)]">
+          Looking for · {getOpportunityLabel(post.opportunityKind)}
+        </p>
       )}
       <div className="flex items-center gap-3 px-0.5">
         <Link

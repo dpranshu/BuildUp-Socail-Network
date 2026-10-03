@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
+import type { OpportunityKind } from "@/lib/opportunities";
 import { createClient } from "@/lib/supabase/server";
+import { isOpportunityKind } from "@/lib/opportunities";
 import { POST_BODY_MAX_LENGTH } from "@/lib/post-limits";
 
 const postImageTypes: Record<string, string> = {
@@ -9,7 +11,7 @@ const postImageTypes: Record<string, string> = {
 };
 const maxPostImageSize = 2 * 1024 * 1024;
 
-const postSelect = "id,author_id,body,tags,media_urls,media_type,likes_count,comments_count,reposts_count,created_at,author:profiles!posts_author_id_fkey(display_name,handle,bio,avatar_url,is_verified)";
+const postSelect = "id,author_id,body,tags,media_urls,media_type,post_kind,opportunity_kind,likes_count,comments_count,reposts_count,created_at,author:profiles!posts_author_id_fkey(display_name,handle,bio,avatar_url,is_verified)";
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function mapPost(data: {
@@ -19,6 +21,8 @@ function mapPost(data: {
   tags: string[];
   media_urls: string[];
   media_type: "image" | "video" | "text";
+  post_kind: "post" | "opportunity";
+  opportunity_kind: "cofounder" | "collaborator" | "feedback" | "client" | "other" | null;
   likes_count: number;
   comments_count: number;
   reposts_count: number;
@@ -37,6 +41,8 @@ function mapPost(data: {
     tags: data.tags,
     mediaUrls: data.media_urls,
     mediaType: data.media_type,
+    postKind: data.post_kind,
+    opportunityKind: data.opportunity_kind,
     likes: data.likes_count,
     comments: data.comments_count,
     reposts: data.reposts_count,
@@ -83,6 +89,8 @@ export async function POST(request: Request) {
         tags: typeof tagsValue === "string" ? JSON.parse(tagsValue) : [],
         mediaUrls: typeof mediaUrlsValue === "string" ? JSON.parse(mediaUrlsValue) : [],
         mediaType: formData.get("mediaType"),
+        postKind: formData.get("postKind"),
+        opportunityKind: formData.get("opportunityKind"),
       };
     } catch {
       return NextResponse.json({ message: "Invalid post details." }, { status: 400 });
@@ -102,6 +110,24 @@ export async function POST(request: Request) {
 
   const title = typeof input.title === "string" ? input.title.trim() : "";
   const content = typeof input.body === "string" ? input.body.trim() : "";
+  const rawPostKind = input.postKind ?? "post";
+  if (rawPostKind !== "post" && rawPostKind !== "opportunity") {
+    return NextResponse.json({ message: "Choose a valid post type." }, { status: 400 });
+  }
+  const postKind = rawPostKind;
+  const opportunityKind = input.opportunityKind === null || input.opportunityKind === undefined || input.opportunityKind === ""
+    ? null
+    : input.opportunityKind;
+  let validatedOpportunityKind: OpportunityKind | null = null;
+  if (postKind === "opportunity" && !isOpportunityKind(opportunityKind)) {
+    return NextResponse.json({ message: "Choose a valid opportunity type." }, { status: 400 });
+  }
+  if (postKind === "opportunity" && isOpportunityKind(opportunityKind)) {
+    validatedOpportunityKind = opportunityKind;
+  }
+  if (postKind === "post" && opportunityKind !== null) {
+    return NextResponse.json({ message: "Regular posts cannot include an opportunity type." }, { status: 400 });
+  }
   const postId = typeof input.postId === "string" ? input.postId : null;
   if (postId && !uuidPattern.test(postId)) {
     return NextResponse.json({ message: "Invalid post identifier." }, { status: 400 });
@@ -198,7 +224,16 @@ export async function POST(request: Request) {
   const allMediaUrls = uploadedImageUrl ? [uploadedImageUrl, ...mediaUrls] : mediaUrls;
   const { data, error } = await supabase
     .from("posts")
-    .insert({ ...(postId ? { id: postId } : {}), author_id: user.id, body: postBody, tags, media_urls: allMediaUrls, media_type: mediaType })
+    .insert({
+      ...(postId ? { id: postId } : {}),
+      author_id: user.id,
+      body: postBody,
+      tags,
+      media_urls: allMediaUrls,
+      media_type: mediaType,
+      post_kind: postKind,
+      opportunity_kind: validatedOpportunityKind,
+    })
     .select(postSelect)
     .single();
 

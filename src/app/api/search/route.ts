@@ -18,7 +18,7 @@ export async function GET(request: Request) {
       .order("followers_count", { ascending: false })
       .limit(20),
     supabase.from("posts")
-      .select("id,author_id,body,tags,media_urls,media_type,likes_count,comments_count,reposts_count,created_at,author:profiles!posts_author_id_fkey(display_name,handle)")
+      .select("id,author_id,body,tags,media_urls,media_type,post_kind,opportunity_kind,likes_count,comments_count,reposts_count,created_at,author:profiles!posts_author_id_fkey(display_name,handle)")
       .ilike("body", `%${query}%`)
       .is("deleted_at", null)
       .order("created_at", { ascending: false })
@@ -58,6 +58,8 @@ export async function GET(request: Request) {
       tags: post.tags,
       mediaUrls: post.media_urls,
       mediaType: post.media_type,
+      postKind: post.post_kind,
+      opportunityKind: post.opportunity_kind,
       likes: post.likes_count,
       comments: post.comments_count,
       reposts: post.reposts_count,

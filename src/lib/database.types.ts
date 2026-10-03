@@ -42,9 +42,9 @@ export type Database = {
         Relationships: [Relation<"shipped_projects_owner_id_fkey", ["owner_id"], "profiles">];
       };
       posts: {
-        Row: { id: string; author_id: string; body: string; tags: string[]; media_urls: string[]; media_type: "image" | "video" | "text"; likes_count: number; comments_count: number; reposts_count: number; created_at: string; deleted_at: string | null };
-        Insert: { id?: string; author_id: string; body: string; tags?: string[]; media_urls?: string[]; media_type?: "image" | "video" | "text"; likes_count?: number; comments_count?: number; reposts_count?: number; created_at?: string; deleted_at?: string | null };
-        Update: { id?: string; author_id?: string; body?: string; tags?: string[]; media_urls?: string[]; media_type?: "image" | "video" | "text"; likes_count?: number; comments_count?: number; reposts_count?: number; created_at?: string; deleted_at?: string | null };
+        Row: { id: string; author_id: string; body: string; tags: string[]; media_urls: string[]; media_type: "image" | "video" | "text"; post_kind: "post" | "opportunity"; opportunity_kind: "cofounder" | "collaborator" | "feedback" | "client" | "other" | null; likes_count: number; comments_count: number; reposts_count: number; created_at: string; deleted_at: string | null };
+        Insert: { id?: string; author_id: string; body: string; tags?: string[]; media_urls?: string[]; media_type?: "image" | "video" | "text"; post_kind?: "post" | "opportunity"; opportunity_kind?: "cofounder" | "collaborator" | "feedback" | "client" | "other" | null; likes_count?: number; comments_count?: number; reposts_count?: number; created_at?: string; deleted_at?: string | null };
+        Update: { id?: string; author_id?: string; body?: string; tags?: string[]; media_urls?: string[]; media_type?: "image" | "video" | "text"; post_kind?: "post" | "opportunity"; opportunity_kind?: "cofounder" | "collaborator" | "feedback" | "client" | "other" | null; likes_count?: number; comments_count?: number; reposts_count?: number; created_at?: string; deleted_at?: string | null };
         Relationships: [Relation<"posts_author_id_fkey", ["author_id"], "profiles">];
       };
       post_reports: {

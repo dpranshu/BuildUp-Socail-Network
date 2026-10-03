@@ -7,6 +7,7 @@ import { FileText, Hash, Image as ImageIcon, Send, Trash2, Video } from "lucide-
 import { AppShell } from "@/components/app-shell";
 import { compressPostImage, PostImageEditor, type PostImageSelection } from "@/components/post-image-editor";
 import { addPendingPost, removePendingPost, updatePendingPost } from "@/lib/pending-posts";
+import { OPPORTUNITY_KINDS, type OpportunityKind, type PostKind } from "@/lib/opportunities";
 import { POST_BODY_MAX_LENGTH, POST_DRAFT_MAX_LENGTH } from "@/lib/post-limits";
 import type { Post } from "@/lib/types";
 
@@ -18,6 +19,8 @@ export default function CreatePage() {
   const [body, setBody] = useState("");
   const [tags, setTags] = useState("");
   const [mediaUrls, setMediaUrls] = useState("");
+  const [postKind, setPostKind] = useState<PostKind>("post");
+  const [opportunityKind, setOpportunityKind] = useState<OpportunityKind | "">("");
   const [imageSelection, setImageSelection] = useState<PostImageSelection | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [editingFile, setEditingFile] = useState<File | null>(null);
@@ -34,16 +37,18 @@ export default function CreatePage() {
   useEffect(() => {
     const savedBody = window.sessionStorage.getItem("buildup-create-draft");
     const savedMediaType = window.sessionStorage.getItem("buildup-create-media");
+    const requestedPostKind = new URLSearchParams(window.location.search).get("kind");
     if (savedBody !== null) {
       window.sessionStorage.removeItem("buildup-create-draft");
     }
     if (savedMediaType === "image" || savedMediaType === "video") {
       window.sessionStorage.removeItem("buildup-create-media");
     }
-    if (savedBody !== null || savedMediaType === "image" || savedMediaType === "video") {
+    if (savedBody !== null || savedMediaType === "image" || savedMediaType === "video" || requestedPostKind === "opportunity") {
       window.setTimeout(() => {
         if (savedBody !== null) setBody(savedBody);
         if (savedMediaType === "image" || savedMediaType === "video") setMediaType(savedMediaType);
+        if (requestedPostKind === "opportunity") setPostKind("opportunity");
       }, 0);
     }
   }, []);
@@ -97,6 +102,8 @@ export default function CreatePage() {
         reposts: 0,
         mediaUrls: [previewUrl],
         mediaType: "image",
+        postKind,
+        opportunityKind: postKind === "opportunity" ? opportunityKind || null : null,
         createdAt: new Date().toISOString(),
         isMine: true,
         likedByMe: false,
@@ -114,6 +121,8 @@ export default function CreatePage() {
           formData.set("tags", JSON.stringify(tagList));
           formData.set("mediaUrls", JSON.stringify(mediaUrlList));
           formData.set("mediaType", "image");
+          formData.set("postKind", postKind);
+          formData.set("opportunityKind", opportunityKind);
           formData.set("image", compressedFile);
           updatePendingPost(temporaryId, { status: "uploading" });
 
@@ -201,6 +210,8 @@ export default function CreatePage() {
     formData.set("tags", JSON.stringify(tagList));
     formData.set("mediaUrls", JSON.stringify(mediaUrlList));
     formData.set("mediaType", mediaType);
+    formData.set("postKind", postKind);
+    formData.set("opportunityKind", opportunityKind);
 
     try {
       const response = await fetch("/api/posts", {
@@ -219,7 +230,7 @@ export default function CreatePage() {
       setMediaUrls("");
       clearImage();
       setMediaType("text");
-      router.push("/feed");
+      router.push(postKind === "opportunity" ? "/collabs" : "/feed");
       router.refresh();
     } catch {
       setMessage("Unable to reach the server. Try again.");
@@ -244,11 +255,46 @@ export default function CreatePage() {
           }}
         />
         <div className="flex items-center justify-between border-b hairline py-4">
-          <h1 className="font-display text-lg font-semibold">Create a post</h1>
+          <h1 className="font-display text-lg font-semibold">{postKind === "opportunity" ? "Find your people" : "Create a post"}</h1>
           {body.length > POST_BODY_MAX_LENGTH && (
             <span role="alert" className="text-xs text-rose-300">
               Remove {body.length - POST_BODY_MAX_LENGTH} characters to post.
             </span>
+          )}
+        </div>
+
+        <div className="border-b hairline py-3">
+          <p className="mb-2 text-xs text-[var(--muted)]">What are you sharing?</p>
+          <div className="flex gap-2">
+            {([
+              ["post", "A regular post"],
+              ["opportunity", "I’m looking for…"],
+            ] as const).map(([kind, label]) => (
+              <button
+                key={kind}
+                type="button"
+                aria-pressed={postKind === kind}
+                onClick={() => setPostKind(kind)}
+                className={`min-h-9 rounded-full border px-3 text-xs font-medium ${postKind === kind ? "border-[var(--blue)] bg-[var(--blue)]/15 text-white" : "border-white/10 text-[var(--muted)] hover:text-white"}`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          {postKind === "opportunity" && (
+            <div className="mt-3">
+              <label htmlFor="opportunity-kind" className="mb-1 block text-xs text-[var(--muted)]">I’m looking for</label>
+              <select
+                id="opportunity-kind"
+                value={opportunityKind}
+                onChange={(event) => setOpportunityKind(event.target.value as OpportunityKind | "")}
+                className="min-h-10 w-full border hairline bg-[var(--surface)] px-3 text-sm text-white outline-none focus:border-[var(--blue)]"
+              >
+                <option value="">Choose one</option>
+                {OPPORTUNITY_KINDS.map((kind) => <option key={kind.value} value={kind.value}>{kind.label}</option>)}
+              </select>
+              <p className="mt-2 text-xs leading-5 text-[var(--muted)]">Be clear about what you’re building and who would be a good fit.</p>
+            </div>
           )}
         </div>
 
@@ -259,7 +305,7 @@ export default function CreatePage() {
           maxLength={POST_DRAFT_MAX_LENGTH}
           value={body}
           onChange={(event) => setBody(event.target.value)}
-          placeholder="What are you building, learning, or figuring out?"
+          placeholder={postKind === "opportunity" ? "Tell people what you’re building and who you’d like to meet…" : "What are you building, learning, or figuring out?"}
           className="min-h-[110px] w-full resize-y bg-transparent py-4 text-[15px] leading-7 text-white outline-none placeholder:text-[#77716b]"
         />
 
@@ -343,13 +389,13 @@ export default function CreatePage() {
           </button>
         </div>
 
-        <label htmlFor="post-tags" className="sr-only">Tags</label>
+        <label htmlFor="post-tags" className="sr-only">{postKind === "opportunity" ? "Skills or topics" : "Tags"}</label>
         <input
           id="post-tags"
           type="text"
           value={tags}
           onChange={(event) => setTags(event.target.value)}
-          placeholder="Add tags, separated by spaces"
+          placeholder={postKind === "opportunity" ? "Skills or topics (e.g. design, React, climate)" : "Add tags, separated by spaces"}
           className="w-full border-t hairline bg-transparent py-3 text-sm text-white outline-none placeholder:text-[#77716b]"
         />
 
@@ -360,6 +406,7 @@ export default function CreatePage() {
             type="submit"
             disabled={submitting
               || body.length > POST_BODY_MAX_LENGTH
+              || (postKind === "opportunity" && !opportunityKind)
               || (!body.trim() && !imageSelection && !mediaUrls.trim())
               || (mediaType === "image" && !imageSelection)}
             className="inline-flex min-h-10 items-center gap-2 rounded-md bg-[var(--blue)] px-4 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"

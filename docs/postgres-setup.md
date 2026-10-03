@@ -50,6 +50,8 @@ using (deleted_at is null or (select auth.uid()) = author_id);
 
 The delete API verifies the post is no longer visible in app queries and avoids `RETURNING`.
 
+Creator collaboration posts use `posts.post_kind` and `posts.opportunity_kind`. Apply [`20261003074639_create_opportunity_posts.sql`](../supabase/migrations/20261003074639_create_opportunity_posts.sql) to the connected Supabase project before deploying code that reads or writes these columns. It defaults existing posts to regular posts, constrains opportunity categories, grants authenticated users insert access to only the new fields, and adds an index for active opportunity listings.
+
 ## Database schema backup
 
 The app-facing table shapes and relationships are tracked in [`src/lib/database.types.ts`](../src/lib/database.types.ts), while schema changes made for post hiding are tracked as migrations in [`supabase/migrations/`](../supabase/migrations/). These files preserve the application schema contract and incremental changes in source control, but they are not a complete restorable dump of the live database.

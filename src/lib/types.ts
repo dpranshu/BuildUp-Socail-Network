@@ -1,3 +1,5 @@
+import type { OpportunityKind, PostKind } from "@/lib/opportunities";
+
 export type Post = {
   id: string;
   authorId: string;
@@ -13,6 +15,8 @@ export type Post = {
   reposts: number;
   mediaUrls: string[];
   mediaType: "image" | "video" | "text";
+  postKind: PostKind;
+  opportunityKind: OpportunityKind | null;
   createdAt: string;
   isMine: boolean;
   likedByMe: boolean;

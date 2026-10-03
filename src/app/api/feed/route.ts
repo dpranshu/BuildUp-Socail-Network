@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { isOpportunityKind } from "@/lib/opportunities";
 import { createClient } from "@/lib/supabase/server";
 
 export async function GET(request: Request) {
@@ -6,6 +7,14 @@ export async function GET(request: Request) {
   const { data: { user } } = await supabase.auth.getUser();
   const searchParams = new URL(request.url).searchParams;
   const mode = searchParams.get("mode");
+  const kind = searchParams.get("kind");
+  const opportunityKind = searchParams.get("opportunity_kind");
+  if (kind !== null && kind !== "opportunity") {
+    return NextResponse.json({ message: "Invalid feed type." }, { status: 400 });
+  }
+  if (opportunityKind !== null && !isOpportunityKind(opportunityKind)) {
+    return NextResponse.json({ message: "Invalid opportunity type." }, { status: 400 });
+  }
   const requestedPageSize = Number(searchParams.get("page_size") ?? 6);
   const pageSize = Number.isInteger(requestedPageSize) && requestedPageSize > 0
     ? Math.min(requestedPageSize, 10)
@@ -57,12 +66,14 @@ export async function GET(request: Request) {
 
   let query = supabase
     .from("posts")
-    .select("id,author_id,body,tags,media_urls,media_type,likes_count,comments_count,reposts_count,created_at,author:profiles!posts_author_id_fkey(display_name,handle,bio,avatar_url,is_verified)")
+    .select("id,author_id,body,tags,media_urls,media_type,post_kind,opportunity_kind,likes_count,comments_count,reposts_count,created_at,author:profiles!posts_author_id_fkey(display_name,handle,bio,avatar_url,is_verified)")
     .is("deleted_at", null)
     .order("created_at", { ascending: false })
     .order("id", { ascending: false })
     .limit(pageSize + 1);
 
+  if (kind === "opportunity") query = query.eq("post_kind", "opportunity");
+  if (opportunityKind) query = query.eq("opportunity_kind", opportunityKind);
   if (followedIds) query = query.in("author_id", followedIds);
   if (blockedAuthorIds.length > 0) query = query.not("author_id", "in", `(${blockedAuthorIds.join(",")})`);
   if (hiddenPostIds.length > 0) query = query.not("id", "in", `(${hiddenPostIds.join(",")})`);
@@ -72,7 +83,14 @@ export async function GET(request: Request) {
   const { data, error } = await query;
 
   if (error) {
-    return NextResponse.json({ message: "Unable to load the feed." }, { status: 500 });
+    console.error("Unable to load the feed.", { code: error.code, message: error.message });
+    const needsOpportunityMigration = error.code === "42703"
+      && (error.message.includes("post_kind") || error.message.includes("opportunity_kind"));
+    return NextResponse.json({
+      message: needsOpportunityMigration
+        ? "The database needs an update before the feed can load. Apply the Collabs database migration, then try again."
+        : "Unable to load the feed.",
+    }, { status: 500 });
   }
 
   const hasMore = data.length > pageSize;
@@ -107,6 +125,8 @@ export async function GET(request: Request) {
     tags: post.tags,
     mediaUrls: post.media_urls,
     mediaType: post.media_type,
+    postKind: post.post_kind,
+    opportunityKind: post.opportunity_kind,
     likes: post.likes_count,
     comments: post.comments_count,
     reposts: post.reposts_count,
