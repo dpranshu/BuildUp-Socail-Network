@@ -804,6 +804,7 @@ export default function ProfilePage({ handle }: { handle?: string }) {
       {editing && isOwnProfile && (
         <form onSubmit={saveProfile} className="mx-4 mt-5 space-y-4 border hairline bg-white/[0.025] p-4 sm:mx-0">
           <div className="flex items-center justify-between"><h2 className="font-semibold">Edit profile</h2><button type="button" title="Close" aria-label="Close editor" onClick={() => setEditing(false)}><X size={18} /></button></div>
+          <p className="text-xs leading-5 text-[var(--muted)]">Your skills and interests help Collabs suggest creators you may want to build with.</p>
           <div className="grid gap-3 sm:grid-cols-2">
             <Field label="Name" name="display_name" defaultValue={profile.name} maxLength={80} />
             <Field label="Username" name="handle" defaultValue={profile.handle.replace(/^@+/, "")} maxLength={39} required pattern="[A-Za-z0-9._-]{2,39}" />
