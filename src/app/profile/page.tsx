@@ -53,6 +53,7 @@ export default function ProfilePage({ handle }: { handle?: string }) {
   const [commentDraft, setCommentDraft] = useState("");
   const [repostComposerPost, setRepostComposerPost] = useState<string | null>(null);
   const [repostDraft, setRepostDraft] = useState("");
+  const doubleTapLikePendingRef = useRef(new Set<string>());
 
   useEffect(() => {
     if (!connectionsType || !profile?.id) return;
@@ -279,6 +280,12 @@ export default function ProfilePage({ handle }: { handle?: string }) {
       } : current);
       setMessage(error instanceof Error ? error.message : "Could not update like. Try again.");
     }
+  }
+
+  function likePostFromDoubleTap(post: Post) {
+    if (post.likedByMe || doubleTapLikePendingRef.current.has(post.id)) return;
+    doubleTapLikePendingRef.current.add(post.id);
+    void togglePostLike(post).finally(() => doubleTapLikePendingRef.current.delete(post.id));
   }
 
   async function deleteProfilePost(post: Post) {
@@ -837,6 +844,7 @@ export default function ProfilePage({ handle }: { handle?: string }) {
               key={postCardKey}
               id={`post-${post.id}`}
               post={post}
+              onDoubleTapLike={() => likePostFromDoubleTap(post)}
               authorHref={isOwnProfile ? "/profile" : undefined}
               headerActions={canOpenPostMenu && (
                 <button

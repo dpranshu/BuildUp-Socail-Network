@@ -33,6 +33,7 @@ export default function FeedPage() {
   const [publishing, setPublishing] = useState(false);
   const [currentUser, setCurrentUser] = useState<{ id: string; avatarUrl: string | null } | null>(null);
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
+  const doubleTapLikePendingRef = useRef(new Set<string>());
   const [loadedMode, setLoadedMode] = useState<FeedMode | null>(null);
   const [nextCursor, setNextCursor] = useState<FeedCursor | null>(null);
   const [hasMore, setHasMore] = useState(false);
@@ -174,6 +175,12 @@ export default function FeedPage() {
         : item));
       setNotice("Could not update like. Try again.");
     }
+  }
+
+  function likePostFromDoubleTap(post: Post) {
+    if (post.likedByMe || doubleTapLikePendingRef.current.has(post.id)) return;
+    doubleTapLikePendingRef.current.add(post.id);
+    void toggleLike(post).finally(() => doubleTapLikePendingRef.current.delete(post.id));
   }
 
   async function toggleComments(postId: string) {
@@ -465,6 +472,7 @@ export default function FeedPage() {
           <PostCard
             key={post.id}
             post={post}
+            onDoubleTapLike={() => likePostFromDoubleTap(post)}
             headerActions={<button type="button" title="More post actions" aria-label="More post actions" aria-haspopup="menu" aria-expanded={menuPost === post.id} onClick={() => setMenuPost((current) => current === post.id ? null : post.id)} className="rounded-full p-1.5 text-[var(--muted)] hover:bg-white/5"><MoreHorizontal size={19} /></button>}
             toolbar={menuPost === post.id && (post.isMine ? (
               <button type="button" role="menuitem" onClick={() => void deletePost(post)} className="flex w-full items-center px-3 py-2 text-left text-sm text-rose-300 hover:bg-white/[0.06]">Delete post</button>

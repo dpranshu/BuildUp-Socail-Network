@@ -64,6 +64,13 @@ body {
 .post-action { display: inline-flex; min-height: 34px; align-items: center; gap: 6px; color: #a9a39c; font-size: 12px; }
 .post-action:hover { color: var(--foreground); }
 .post-action-liked { color: #ff6b82; }
+@keyframes post-like-pop {
+  0% { opacity: 0; scale: 0.2; }
+  35% { opacity: 1; scale: 1.2; }
+  65% { opacity: 1; scale: 1; }
+  100% { opacity: 0; scale: 0.8; }
+}
+.animate-post-like-pop { animation: post-like-pop 650ms ease-out both; }
 .profile-image { background: radial-gradient(circle at 58% 30%, #b92d32 0 18%, #711b20 34%, #211615 70%); }
 .composer-scrollbar {
   scrollbar-color: rgba(170, 164, 157, 0.55) rgba(255, 255, 255, 0.035);
