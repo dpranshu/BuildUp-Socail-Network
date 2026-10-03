@@ -55,6 +55,8 @@ export default function ProfilePage({ handle }: { handle?: string }) {
   const [repostComposerPost, setRepostComposerPost] = useState<string | null>(null);
   const [repostDraft, setRepostDraft] = useState("");
   const doubleTapLikePendingRef = useRef(new Set<string>());
+  const openCommentsRef = useRef(openComments);
+  const profileRef = useRef(profile);
 
   useEffect(() => {
     if (!connectionsType || !profile?.id) return;
@@ -156,13 +158,37 @@ export default function ProfilePage({ handle }: { handle?: string }) {
 
   const isOwnProfile = Boolean(profile?.isOwnProfile);
 
+  useEffect(() => {
+    openCommentsRef.current = openComments;
+    profileRef.current = profile;
+  }, [openComments, profile]);
+
+  async function refreshPostComments(postId: string) {
+    const response = await fetch(`/api/posts/${postId}/comments`);
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.message ?? "Unable to load comments.");
+    setProfile((current) => current ? {
+      ...current,
+      posts: current.posts.map((post) => post.id === postId
+        ? { ...post, commentsPreview: data.comments as Comment[] }
+        : post),
+    } : current);
+  }
+
   usePostCountsRealtime(profile?.posts.map((post) => post.id) ?? [], (postId, counts) => {
+    const previousComments = profileRef.current?.posts.find((post) => post.id === postId)?.comments;
     setProfile((current) => current ? {
       ...current,
       posts: current.posts.map((post) => post.id === postId
         ? { ...post, ...counts }
         : post),
     } : current);
+    if (previousComments !== counts.comments && openCommentsRef.current === postId) {
+      void refreshPostComments(postId).catch((error: unknown) => {
+        console.error("Unable to refresh comments after a realtime update.", error);
+        setMessage("New activity arrived, but comments could not be refreshed.");
+      });
+    }
   });
 
   function openConnections(type: ConnectionsType) {
@@ -354,15 +380,7 @@ export default function ProfilePage({ handle }: { handle?: string }) {
     setOpenComments(postId);
     setCommentDraft("");
     try {
-      const response = await fetch(`/api/posts/${postId}/comments`);
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.message ?? "Unable to load comments.");
-      setProfile((current) => current ? {
-        ...current,
-        posts: current.posts.map((post) => post.id === postId
-          ? { ...post, commentsPreview: data.comments as Comment[] }
-          : post),
-      } : current);
+      await refreshPostComments(postId);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Unable to load comments.");
     }

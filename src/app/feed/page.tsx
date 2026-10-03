@@ -42,13 +42,36 @@ export default function FeedPage() {
   const loadMoreRef = useRef(false);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
   const modeRef = useRef(mode);
+  const openCommentsRef = useRef(openComments);
+  const postsRef = useRef(posts);
   const loading = loadedMode !== mode;
   const persistedPosts = posts.filter((post) => !pendingPosts.some((pending) => pending.post.id === post.id));
 
+  useEffect(() => {
+    openCommentsRef.current = openComments;
+    postsRef.current = posts;
+  }, [openComments, posts]);
+
+  async function refreshComments(postId: string) {
+    const response = await fetch(`/api/posts/${postId}/comments`);
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.message ?? "Unable to load comments.");
+    setPosts((current) => current.map((post) => post.id === postId
+      ? { ...post, commentsPreview: data.comments as Comment[] }
+      : post));
+  }
+
   usePostCountsRealtime(persistedPosts.map((post) => post.id), (postId, counts) => {
+    const previousComments = postsRef.current.find((post) => post.id === postId)?.comments;
     setPosts((current) => current.map((post) => post.id === postId
       ? { ...post, ...counts }
       : post));
+    if (previousComments !== counts.comments && openCommentsRef.current === postId) {
+      void refreshComments(postId).catch((error: unknown) => {
+        console.error("Unable to refresh comments after a realtime update.", error);
+        setNotice("New activity arrived, but comments could not be refreshed.");
+      });
+    }
   });
 
   useEffect(() => {
@@ -190,10 +213,12 @@ export default function FeedPage() {
       return;
     }
     setOpenComments(postId);
-    const response = await fetch(`/api/posts/${postId}/comments`);
-    if (!response.ok) return;
-    const data = await response.json();
-    setPosts((current) => current.map((post) => post.id === postId ? { ...post, commentsPreview: data.comments as Comment[] } : post));
+    try {
+      await refreshComments(postId);
+    } catch (error) {
+      console.error("Unable to load comments.", error);
+      setNotice(error instanceof Error ? error.message : "Unable to load comments.");
+    }
   }
 
   async function toggleRepost(post: Post) {
