@@ -175,8 +175,8 @@ export function AppShell({
     <div className={`app-shell min-h-screen bg-[var(--background)] text-[var(--foreground)] ${hiddenChromePathname === pathname ? "chrome-hidden" : ""}`}>
       <header className="app-header sticky top-0 z-40">
         <div className="relative mx-auto flex h-[72px] max-w-[420px] items-center justify-center border-b border-white/[0.07] px-4 md:max-w-[598px]">
-          <Link href="/profile" aria-label="Your profile" title="Your profile" className="absolute left-5">
-            <ProfileAvatar src={avatarUrl} alt="" className="h-[30px] w-[30px]" iconSize={17} />
+          <Link href="/profile" aria-label="Your profile" title="Your profile" className="absolute left-5 flex h-10 w-10 items-center justify-center rounded-full">
+            <ProfileAvatar src={avatarUrl} alt="" className="h-8 w-8" iconSize={20} />
           </Link>
           <Link href="/feed" aria-label="Buildup" className="flex h-7 w-[96px] items-center justify-center">
             <svg viewBox="0 0 140 36" role="img" aria-label="Buildup" className="h-full w-full overflow-visible">
@@ -192,17 +192,17 @@ export function AppShell({
                   href="/search"
                   aria-label="Search"
                   title="Search"
-                  className={`flex h-10 w-10 items-center justify-center rounded-full hover:bg-white/[0.06] ${pathname === "/search" ? "text-[var(--blue)]" : "text-[var(--muted)] hover:text-white"}`}
+                  className={`flex h-10 w-10 items-center justify-center rounded-full hover:bg-white/[0.06] ${pathname === "/search" ? "text-white" : "text-[var(--muted)] hover:text-white"}`}
                 >
-                  <Search className="icon-header" size={20} strokeWidth={1.8} />
+                  <Search className="icon-header" size={24} strokeWidth={1.8} />
                 </Link>
                 <Link
                   href="/notifications"
                   aria-label={unreadNotifications > 0 ? `Notifications, ${unreadNotifications} unread` : "Notifications"}
                   title="Notifications"
-                  className={`relative flex h-10 w-10 items-center justify-center rounded-full hover:bg-white/[0.06] ${pathname === "/notifications" ? "text-[var(--blue)]" : "text-[var(--muted)] hover:text-white"}`}
+                  className={`relative flex h-10 w-10 items-center justify-center rounded-full hover:bg-white/[0.06] ${pathname === "/notifications" ? "text-white" : "text-[var(--muted)] hover:text-white"}`}
                 >
-                  <Bell className="icon-header" size={20} strokeWidth={1.8} />
+                  <Bell className="icon-header" size={24} strokeWidth={1.8} />
                   {unreadNotifications > 0 && (
                     <span aria-hidden="true" className="absolute right-1 top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-500 px-1 text-[10px] font-bold leading-none text-white ring-2 ring-[var(--background)]">
                       {unreadNotifications > 9 ? "9+" : unreadNotifications}
@@ -223,9 +223,9 @@ export function AppShell({
                     setSettingsOpen((open) => !open);
                     setSignOutError("");
                   }}
-                  className="flex h-9 w-9 items-center justify-center rounded-full text-[var(--muted)] hover:bg-white/[0.06] hover:text-white"
+                  className={`flex h-9 w-9 items-center justify-center rounded-full hover:bg-white/[0.06] ${settingsOpen ? "text-white" : "text-[var(--muted)] hover:text-white"}`}
                 >
-                  <Settings className="icon-header" size={20} strokeWidth={1.8} />
+                  <Settings className="icon-header" size={24} strokeWidth={1.8} />
                 </button>
                 {settingsOpen && (
                   <div role="menu" className="absolute right-0 top-11 z-50 min-w-44 overflow-hidden rounded-md border hairline bg-[var(--surface)] p-1 shadow-xl">
