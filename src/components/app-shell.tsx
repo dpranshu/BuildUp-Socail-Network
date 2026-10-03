@@ -141,7 +141,6 @@ export function AppShell({
         event: "*",
         schema: "public",
         table: "conversation_reads",
-        filter: `user_id=eq.${userId}`,
       }, handleUnreadUpdated)
       .subscribe((status, subscriptionError) => {
         if ((status === "CHANNEL_ERROR" || status === "TIMED_OUT") && active) {

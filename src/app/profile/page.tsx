@@ -9,7 +9,7 @@ import { PostCard } from "@/components/post-card";
 import { SharePostButton } from "@/components/share-post-button";
 import { usePostCountsRealtime } from "@/hooks/use-post-counts-realtime";
 import type { Comment, Post, Profile, Project } from "@/lib/types";
-import { BadgeCheck, Cake, Camera, ExternalLink, Heart, LoaderCircle, MapPin, MessageCircle, MoreHorizontal, Pencil, Plus, Repeat2, Ruler, X } from "lucide-react";
+import { BadgeCheck, Cake, Camera, ExternalLink, Heart, LoaderCircle, MapPin, MessageCircle, MoreHorizontal, Pencil, Plus, Repeat2, Ruler, Trash2, X } from "lucide-react";
 
 type ProfileTab = "posts" | "overview" | "projects";
 type ConnectionsType = "followers" | "following";
@@ -51,6 +51,7 @@ export default function ProfilePage({ handle }: { handle?: string }) {
   const [openComments, setOpenComments] = useState<string | null>(null);
   const [menuPost, setMenuPost] = useState<string | null>(null);
   const [commentDraft, setCommentDraft] = useState("");
+  const [deletingCommentId, setDeletingCommentId] = useState<string | null>(null);
   const [repostComposerPost, setRepostComposerPost] = useState<string | null>(null);
   const [repostDraft, setRepostDraft] = useState("");
   const doubleTapLikePendingRef = useRef(new Set<string>());
@@ -396,6 +397,35 @@ export default function ProfilePage({ handle }: { handle?: string }) {
       setCommentDraft("");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Could not add comment.");
+    }
+  }
+
+  async function deletePostComment(postId: string, comment: Comment) {
+    if (!comment.isMine || deletingCommentId) return;
+    setDeletingCommentId(comment.id);
+    setMessage("");
+    try {
+      const response = await fetch(`/api/posts/${postId}/comments/${comment.id}`, { method: "DELETE" });
+      const data = await response.json();
+      if (response.status === 401) {
+        router.push("/login");
+        return;
+      }
+      if (!response.ok) throw new Error(data.message ?? "Unable to delete this comment.");
+      setProfile((current) => current ? {
+        ...current,
+        posts: current.posts.map((post) => post.id === postId
+          ? {
+              ...post,
+              comments: typeof data.comments === "number" ? data.comments : Math.max(0, post.comments - 1),
+              commentsPreview: post.commentsPreview.filter((item) => item.id !== comment.id),
+            }
+          : post),
+      } : current);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Unable to delete this comment.");
+    } finally {
+      setDeletingCommentId(null);
     }
   }
 
@@ -938,9 +968,23 @@ export default function ProfilePage({ handle }: { handle?: string }) {
                 <div className="mt-2 border-t hairline pt-3">
                   <div className="space-y-3">
                     {post.commentsPreview.map((comment) => (
-                      <div key={comment.id} className="text-xs">
-                        <span className="font-semibold">{comment.author}</span>
-                        <span className="ml-2 text-[var(--muted)]">{comment.body}</span>
+                      <div key={comment.id} className="flex items-start gap-2 text-xs">
+                        <div className="min-w-0 flex-1">
+                          <span className="font-semibold">{comment.author}</span>
+                          <span className="ml-2 text-[var(--muted)]">{comment.body}</span>
+                        </div>
+                        {comment.isMine && (
+                          <button
+                            type="button"
+                            aria-label="Delete comment"
+                            title="Delete comment"
+                            disabled={deletingCommentId === comment.id}
+                            onClick={() => void deletePostComment(post.id, comment)}
+                            className="shrink-0 text-[var(--muted)] hover:text-rose-300 disabled:opacity-50"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        )}
                       </div>
                     ))}
                     {post.commentsPreview.length === 0 && <p className="text-xs text-[var(--muted)]">No comments yet.</p>}

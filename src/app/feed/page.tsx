@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
-import { Hash, Heart, Image as ImageIcon, LoaderCircle, MessageCircle, MoreHorizontal, Repeat2, Smile, Video } from "lucide-react";
+import { Hash, Heart, Image as ImageIcon, LoaderCircle, MessageCircle, MoreHorizontal, Repeat2, Smile, Trash2, Video } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { PostCard } from "@/components/post-card";
 import { ProfileAvatar } from "@/components/profile-avatar";
@@ -24,6 +24,7 @@ export default function FeedPage() {
   const [openComments, setOpenComments] = useState<string | null>(null);
   const [menuPost, setMenuPost] = useState<string | null>(null);
   const [commentDraft, setCommentDraft] = useState("");
+  const [deletingCommentId, setDeletingCommentId] = useState<string | null>(null);
   const [repostComposerPost, setRepostComposerPost] = useState<string | null>(null);
   const [repostDraft, setRepostDraft] = useState("");
   const [notice, setNotice] = useState("");
@@ -322,6 +323,32 @@ export default function FeedPage() {
     setCommentDraft("");
   }
 
+  async function deleteComment(postId: string, comment: Comment) {
+    if (!comment.isMine || deletingCommentId) return;
+    setDeletingCommentId(comment.id);
+    setNotice("");
+    try {
+      const response = await fetch(`/api/posts/${postId}/comments/${comment.id}`, { method: "DELETE" });
+      const data = await response.json();
+      if (response.status === 401) {
+        router.push("/login");
+        return;
+      }
+      if (!response.ok) throw new Error(data.message ?? "Unable to delete this comment.");
+      setPosts((current) => current.map((post) => post.id === postId
+        ? {
+            ...post,
+            comments: typeof data.comments === "number" ? data.comments : Math.max(0, post.comments - 1),
+            commentsPreview: post.commentsPreview.filter((item) => item.id !== comment.id),
+          }
+        : post));
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Unable to delete this comment.");
+    } finally {
+      setDeletingCommentId(null);
+    }
+  }
+
   function openCreatePage(mediaType: "image" | "video") {
     window.sessionStorage.setItem("buildup-create-draft", composerBody);
     window.sessionStorage.setItem("buildup-create-media", mediaType);
@@ -509,7 +536,26 @@ export default function FeedPage() {
             comments={openComments === post.id && (
               <div className="mt-2 border-t hairline pt-3">
                 <div className="space-y-3">
-                  {post.commentsPreview.map((comment) => <div key={comment.id} className="text-xs"><span className="font-semibold">{comment.author}</span><span className="ml-2 text-[var(--muted)]">{comment.body}</span></div>)}
+                  {post.commentsPreview.map((comment) => (
+                    <div key={comment.id} className="flex items-start gap-2 text-xs">
+                      <div className="min-w-0 flex-1">
+                        <span className="font-semibold">{comment.author}</span>
+                        <span className="ml-2 text-[var(--muted)]">{comment.body}</span>
+                      </div>
+                      {comment.isMine && (
+                        <button
+                          type="button"
+                          aria-label="Delete comment"
+                          title="Delete comment"
+                          disabled={deletingCommentId === comment.id}
+                          onClick={() => void deleteComment(post.id, comment)}
+                          className="shrink-0 text-[var(--muted)] hover:text-rose-300 disabled:opacity-50"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      )}
+                    </div>
+                  ))}
                   {post.commentsPreview.length === 0 && <p className="text-xs text-[var(--muted)]">No comments yet.</p>}
                 </div>
                 <form className="mt-3 flex gap-2" onSubmit={(event) => { event.preventDefault(); void submitComment(post.id); }}>

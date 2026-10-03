@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { markConversationRead } from "@/lib/messages/mark-conversation-read";
 
 type Context = { params: Promise<{ conversationId: string }> };
 
@@ -36,11 +37,7 @@ export async function GET(_request: Request, { params }: Context) {
     console.error("Unable to load messages:", error.message, error.code);
     return NextResponse.json({ message: "Unable to load messages." }, { status: 500 });
   }
-  const { error: readError } = await supabase.from("conversation_reads").upsert({
-    conversation_id: conversationId,
-    user_id: user.id,
-    last_read_at: new Date().toISOString(),
-  }, { onConflict: "conversation_id,user_id" });
+  const readError = await markConversationRead(supabase, conversationId, user.id);
   if (readError) {
     console.error("Unable to mark conversation read:", readError.message, readError.code);
     return NextResponse.json({ message: "Messages loaded, but their read status could not be updated." }, { status: 500 });

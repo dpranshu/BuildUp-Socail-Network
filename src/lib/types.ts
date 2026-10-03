@@ -44,6 +44,7 @@ export type Comment = {
   handle: string;
   body: string;
   createdAt: string;
+  isMine: boolean;
 };
 
 export type Project = {

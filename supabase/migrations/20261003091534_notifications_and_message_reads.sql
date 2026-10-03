@@ -208,7 +208,7 @@ begin
       notification_conversation,
       notification_interest
     )
-    on conflict (notification_type, source_id) do nothing;
+    on conflict on constraint notifications_source_unique do nothing;
   end if;
 
   return new;
