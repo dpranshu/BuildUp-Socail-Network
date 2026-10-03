@@ -52,6 +52,8 @@ The delete API verifies the post is no longer visible in app queries and avoids 
 
 Creator collaboration posts use `posts.post_kind` and `posts.opportunity_kind`. Apply [`20261003074639_create_opportunity_posts.sql`](../supabase/migrations/20261003074639_create_opportunity_posts.sql) to the connected Supabase project before deploying code that reads or writes these columns. It defaults existing posts to regular posts, constrains opportunity categories, grants authenticated users insert access to only the new fields, and adds an index for active opportunity listings.
 
+Collab opportunities also include structured role, skills, commitment, work-style, location, compensation, and open/paused/filled status fields. Apply [`20261003083249_complete_collab_opportunities.sql`](../supabase/migrations/20261003083249_complete_collab_opportunities.sql) before deploying this workflow. It creates `collab_interests` with row-level security so only the applicant and opportunity owner can read introductions; applicants can submit only for open opportunities, and only the owner can accept or decline them. The API then offers an accepted creator a direct message link.
+
 ## Database schema backup
 
 The app-facing table shapes and relationships are tracked in [`src/lib/database.types.ts`](../src/lib/database.types.ts), while schema changes made for post hiding are tracked as migrations in [`supabase/migrations/`](../supabase/migrations/). These files preserve the application schema contract and incremental changes in source control, but they are not a complete restorable dump of the live database.

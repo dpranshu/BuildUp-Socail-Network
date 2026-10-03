@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import type { OpportunityKind } from "@/lib/opportunities";
+import type { Database } from "@/lib/database.types";
 import { createClient } from "@/lib/supabase/server";
 import { isOpportunityKind } from "@/lib/opportunities";
 import { POST_BODY_MAX_LENGTH } from "@/lib/post-limits";
@@ -11,7 +12,7 @@ const postImageTypes: Record<string, string> = {
 };
 const maxPostImageSize = 2 * 1024 * 1024;
 
-const postSelect = "id,author_id,body,tags,media_urls,media_type,post_kind,opportunity_kind,likes_count,comments_count,reposts_count,created_at,author:profiles!posts_author_id_fkey(display_name,handle,bio,avatar_url,is_verified)";
+const postSelect = "id,author_id,body,tags,media_urls,media_type,post_kind,opportunity_kind,opportunity_title,opportunity_role,opportunity_skills,opportunity_commitment,opportunity_work_mode,opportunity_location,opportunity_compensation,opportunity_status,likes_count,comments_count,reposts_count,created_at,author:profiles!posts_author_id_fkey(display_name,handle,bio,avatar_url,is_verified)";
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function mapPost(data: {
@@ -23,6 +24,14 @@ function mapPost(data: {
   media_type: "image" | "video" | "text";
   post_kind: "post" | "opportunity";
   opportunity_kind: "cofounder" | "collaborator" | "feedback" | "client" | "other" | null;
+  opportunity_title: string | null;
+  opportunity_role: string | null;
+  opportunity_skills: string[];
+  opportunity_commitment: "flexible" | "project" | "part_time" | "full_time" | null;
+  opportunity_work_mode: "remote" | "hybrid" | "in_person" | "flexible" | null;
+  opportunity_location: string | null;
+  opportunity_compensation: string | null;
+  opportunity_status: "open" | "paused" | "filled" | null;
   likes_count: number;
   comments_count: number;
   reposts_count: number;
@@ -43,6 +52,14 @@ function mapPost(data: {
     mediaType: data.media_type,
     postKind: data.post_kind,
     opportunityKind: data.opportunity_kind,
+    opportunityTitle: data.opportunity_title,
+    opportunityRole: data.opportunity_role,
+    opportunitySkills: data.opportunity_skills,
+    opportunityCommitment: data.opportunity_commitment,
+    opportunityWorkMode: data.opportunity_work_mode,
+    opportunityLocation: data.opportunity_location,
+    opportunityCompensation: data.opportunity_compensation,
+    opportunityStatus: data.opportunity_status,
     likes: data.likes_count,
     comments: data.comments_count,
     reposts: data.reposts_count,
@@ -91,6 +108,13 @@ export async function POST(request: Request) {
         mediaType: formData.get("mediaType"),
         postKind: formData.get("postKind"),
         opportunityKind: formData.get("opportunityKind"),
+        opportunityTitle: formData.get("opportunityTitle"),
+        opportunityRole: formData.get("opportunityRole"),
+        opportunitySkills: JSON.parse(String(formData.get("opportunitySkills") ?? "[]")),
+        opportunityCommitment: formData.get("opportunityCommitment"),
+        opportunityWorkMode: formData.get("opportunityWorkMode"),
+        opportunityLocation: formData.get("opportunityLocation"),
+        opportunityCompensation: formData.get("opportunityCompensation"),
       };
     } catch {
       return NextResponse.json({ message: "Invalid post details." }, { status: 400 });
@@ -128,6 +152,31 @@ export async function POST(request: Request) {
   if (postKind === "post" && opportunityKind !== null) {
     return NextResponse.json({ message: "Regular posts cannot include an opportunity type." }, { status: 400 });
   }
+  const opportunityTitle = typeof input.opportunityTitle === "string" ? input.opportunityTitle.trim() : "";
+  const opportunityRole = typeof input.opportunityRole === "string" ? input.opportunityRole.trim() : "";
+  const opportunitySkills = Array.isArray(input.opportunitySkills)
+    ? [...new Set(input.opportunitySkills.filter((skill): skill is string => typeof skill === "string").map((skill) => skill.trim()).filter(Boolean))].slice(0, 8)
+    : [];
+  const opportunityCommitment = (["flexible", "project", "part_time", "full_time"] as const)
+    .find((value) => value === (input.opportunityCommitment || "flexible")) ?? null;
+  const opportunityWorkMode = (["remote", "hybrid", "in_person", "flexible"] as const)
+    .find((value) => value === (input.opportunityWorkMode || "flexible")) ?? null;
+  const opportunityLocation = typeof input.opportunityLocation === "string" ? input.opportunityLocation.trim() : "";
+  const opportunityCompensation = typeof input.opportunityCompensation === "string" ? input.opportunityCompensation.trim() : "";
+  if (postKind === "opportunity" && (
+    opportunityTitle.length < 3
+    || opportunityTitle.length > 120
+    || opportunityRole.length < 2
+    || opportunityRole.length > 100
+    || opportunitySkills.some((skill) => skill.length > 50)
+    || !opportunityCommitment
+    || !opportunityWorkMode
+    || opportunityLocation.length > 120
+    || opportunityCompensation.length > 160
+    || (["hybrid", "in_person"].includes(opportunityWorkMode ?? "") && opportunityLocation.length < 2)
+  )) {
+    return NextResponse.json({ message: "Add a clear title and role, then check the opportunity details." }, { status: 400 });
+  }
   const postId = typeof input.postId === "string" ? input.postId : null;
   if (postId && !uuidPattern.test(postId)) {
     return NextResponse.json({ message: "Invalid post identifier." }, { status: 400 });
@@ -145,7 +194,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ message: "Use up to four valid HTTPS media links." }, { status: 400 });
   }
   const mediaUrls = rawMediaUrls as string[];
-  const mediaType = imageFile || input.mediaType === "image"
+  const mediaType: Database["public"]["Tables"]["posts"]["Insert"]["media_type"] = imageFile || input.mediaType === "image"
     ? "image"
     : input.mediaType === "video" ? "video" : "text";
   const postBody = [title, content].filter(Boolean).join("\n\n");
@@ -222,18 +271,29 @@ export async function POST(request: Request) {
   }
 
   const allMediaUrls = uploadedImageUrl ? [uploadedImageUrl, ...mediaUrls] : mediaUrls;
-  const { data, error } = await supabase
-    .from("posts")
-    .insert({
-      ...(postId ? { id: postId } : {}),
-      author_id: user.id,
-      body: postBody,
-      tags,
-      media_urls: allMediaUrls,
-      media_type: mediaType,
+  const postInsert: Database["public"]["Tables"]["posts"]["Insert"] = {
+    ...(postId ? { id: postId } : {}),
+    author_id: user.id,
+    body: postBody,
+    tags,
+    media_urls: allMediaUrls,
+    media_type: mediaType,
+    ...(postKind === "opportunity" ? {
       post_kind: postKind,
       opportunity_kind: validatedOpportunityKind,
-    })
+      opportunity_title: opportunityTitle,
+      opportunity_role: opportunityRole,
+      opportunity_skills: opportunitySkills,
+      opportunity_commitment: opportunityCommitment,
+      opportunity_work_mode: opportunityWorkMode,
+      opportunity_location: opportunityLocation || null,
+      opportunity_compensation: opportunityCompensation || null,
+      opportunity_status: "open" as const,
+    } : {}),
+  };
+  const { data, error } = await supabase
+    .from("posts")
+    .insert(postInsert)
     .select(postSelect)
     .single();
 
@@ -241,6 +301,8 @@ export async function POST(request: Request) {
     console.error("Post creation failed.", {
       code: error.code,
       message: error.message,
+      details: error.details,
+      hint: error.hint,
     });
     if (uploadedObjectPath) {
       const { error: cleanupError } = await supabase.storage.from("avatars").remove([uploadedObjectPath]);

@@ -71,6 +71,26 @@ export default function CreatePage() {
     event.preventDefault();
     setMessage("");
     if (body.length > POST_BODY_MAX_LENGTH) return;
+    const opportunityFormData = new FormData(event.currentTarget);
+    const opportunityTitle = String(opportunityFormData.get("opportunityTitle") ?? "").trim();
+    const opportunityRole = String(opportunityFormData.get("opportunityRole") ?? "").trim();
+    const opportunitySkills = String(opportunityFormData.get("opportunitySkills") ?? "")
+      .split(/[,;]/)
+      .map((skill) => skill.trim())
+      .filter(Boolean)
+      .slice(0, 8);
+    const opportunityCommitment = String(opportunityFormData.get("opportunityCommitment") ?? "flexible");
+    const opportunityWorkMode = String(opportunityFormData.get("opportunityWorkMode") ?? "flexible");
+    const opportunityLocation = String(opportunityFormData.get("opportunityLocation") ?? "").trim();
+    const opportunityCompensation = String(opportunityFormData.get("opportunityCompensation") ?? "").trim();
+    if (postKind === "opportunity" && (
+      opportunityTitle.length < 3
+      || opportunityRole.length < 2
+      || (["hybrid", "in_person"].includes(opportunityWorkMode) && opportunityLocation.length < 2)
+    )) {
+      setMessage("Add an opportunity title and role. Hybrid or in-person opportunities also need a location.");
+      return;
+    }
 
     const tagList = tags
       .split(/[\s,]+/)
@@ -97,6 +117,14 @@ export default function CreatePage() {
         isVerified: false,
         body: body.trim(),
         tags: tagList.map((tag) => `#${tag}`),
+        opportunityTitle: postKind === "opportunity" ? opportunityTitle : null,
+        opportunityRole: postKind === "opportunity" ? opportunityRole : null,
+        opportunitySkills: postKind === "opportunity" ? opportunitySkills : [],
+        opportunityCommitment: postKind === "opportunity" ? opportunityCommitment : null,
+        opportunityWorkMode: postKind === "opportunity" ? opportunityWorkMode : null,
+        opportunityLocation: postKind === "opportunity" ? opportunityLocation || null : null,
+        opportunityCompensation: postKind === "opportunity" ? opportunityCompensation || null : null,
+        opportunityStatus: postKind === "opportunity" ? "open" : null,
         likes: 0,
         comments: 0,
         reposts: 0,
@@ -123,6 +151,13 @@ export default function CreatePage() {
           formData.set("mediaType", "image");
           formData.set("postKind", postKind);
           formData.set("opportunityKind", opportunityKind);
+          formData.set("opportunityTitle", opportunityTitle);
+          formData.set("opportunityRole", opportunityRole);
+          formData.set("opportunitySkills", JSON.stringify(opportunitySkills));
+          formData.set("opportunityCommitment", opportunityCommitment);
+          formData.set("opportunityWorkMode", opportunityWorkMode);
+          formData.set("opportunityLocation", opportunityLocation);
+          formData.set("opportunityCompensation", opportunityCompensation);
           formData.set("image", compressedFile);
           updatePendingPost(temporaryId, { status: "uploading" });
 
@@ -212,6 +247,13 @@ export default function CreatePage() {
     formData.set("mediaType", mediaType);
     formData.set("postKind", postKind);
     formData.set("opportunityKind", opportunityKind);
+    formData.set("opportunityTitle", opportunityTitle);
+    formData.set("opportunityRole", opportunityRole);
+    formData.set("opportunitySkills", JSON.stringify(opportunitySkills));
+    formData.set("opportunityCommitment", opportunityCommitment);
+    formData.set("opportunityWorkMode", opportunityWorkMode);
+    formData.set("opportunityLocation", opportunityLocation);
+    formData.set("opportunityCompensation", opportunityCompensation);
 
     try {
       const response = await fetch("/api/posts", {
@@ -293,7 +335,40 @@ export default function CreatePage() {
                 <option value="">Choose one</option>
                 {OPPORTUNITY_KINDS.map((kind) => <option key={kind.value} value={kind.value}>{kind.label}</option>)}
               </select>
-              <p className="mt-2 text-xs leading-5 text-[var(--muted)]">Be clear about what you’re building and who would be a good fit.</p>
+              <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                <label className="block text-xs text-[var(--muted)]">Opportunity title
+                  <input name="opportunityTitle" required minLength={3} maxLength={120} placeholder="e.g. Build an indie game studio" className="mt-1 min-h-10 w-full border hairline bg-black/20 px-3 text-sm text-white outline-none focus:border-[var(--blue)]" />
+                </label>
+                <label className="block text-xs text-[var(--muted)]">Who are you looking for?
+                  <input name="opportunityRole" required minLength={2} maxLength={100} placeholder="e.g. Unity developer" className="mt-1 min-h-10 w-full border hairline bg-black/20 px-3 text-sm text-white outline-none focus:border-[var(--blue)]" />
+                </label>
+                <label className="block text-xs text-[var(--muted)]">Skills (up to 8, comma separated)
+                  <input name="opportunitySkills" maxLength={420} placeholder="Unity, 3D art, sound design" className="mt-1 min-h-10 w-full border hairline bg-black/20 px-3 text-sm text-white outline-none focus:border-[var(--blue)]" />
+                </label>
+                <label className="block text-xs text-[var(--muted)]">Time commitment
+                  <select name="opportunityCommitment" defaultValue="flexible" className="mt-1 min-h-10 w-full border hairline bg-[var(--surface)] px-3 text-sm text-white outline-none focus:border-[var(--blue)]">
+                    <option value="flexible">Flexible / exploring</option>
+                    <option value="project">One project</option>
+                    <option value="part_time">Part-time</option>
+                    <option value="full_time">Full-time</option>
+                  </select>
+                </label>
+                <label className="block text-xs text-[var(--muted)]">Work style
+                  <select name="opportunityWorkMode" defaultValue="flexible" className="mt-1 min-h-10 w-full border hairline bg-[var(--surface)] px-3 text-sm text-white outline-none focus:border-[var(--blue)]">
+                    <option value="flexible">Flexible</option>
+                    <option value="remote">Remote</option>
+                    <option value="hybrid">Hybrid</option>
+                    <option value="in_person">In person</option>
+                  </select>
+                </label>
+                <label className="block text-xs text-[var(--muted)]">Location (required for hybrid / in person)
+                  <input name="opportunityLocation" maxLength={120} placeholder="City or region" className="mt-1 min-h-10 w-full border hairline bg-black/20 px-3 text-sm text-white outline-none focus:border-[var(--blue)]" />
+                </label>
+                <label className="block text-xs text-[var(--muted)] sm:col-span-2">Compensation (optional)
+                  <input name="opportunityCompensation" maxLength={160} placeholder="e.g. Paid project, equity to discuss, or volunteer" className="mt-1 min-h-10 w-full border hairline bg-black/20 px-3 text-sm text-white outline-none focus:border-[var(--blue)]" />
+                </label>
+              </div>
+              <p className="mt-2 text-xs leading-5 text-[var(--muted)]">Set clear expectations so the right people can decide if it’s a fit.</p>
             </div>
           )}
         </div>

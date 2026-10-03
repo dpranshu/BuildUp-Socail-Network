@@ -135,9 +135,35 @@ export function PostCard({
         <p className="mb-3 whitespace-pre-wrap text-[14px] leading-[1.55] text-[#eeeae5] md:text-base">{post.repostInfo.thoughts}</p>
       )}
       {post.postKind === "opportunity" && (
-        <p className="mb-2 inline-flex items-center rounded-full border border-[var(--blue)]/30 bg-[var(--blue)]/10 px-2.5 py-1 text-[11px] font-semibold text-[var(--blue)]">
-          Looking for · {getOpportunityLabel(post.opportunityKind)}
-        </p>
+        <div className="mb-3 space-y-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="inline-flex items-center rounded-full border border-[var(--blue)]/30 bg-[var(--blue)]/10 px-2.5 py-1 text-[11px] font-semibold text-[var(--blue)]">
+              {getOpportunityLabel(post.opportunityKind)}
+            </span>
+            {post.opportunityStatus && post.opportunityStatus !== "open" && (
+              <span className="inline-flex items-center rounded-full border hairline px-2.5 py-1 text-[11px] font-medium text-[var(--muted)]">
+                {post.opportunityStatus === "filled" ? "Filled" : "Paused"}
+              </span>
+            )}
+          </div>
+          {post.opportunityTitle && <h2 className="text-base font-semibold leading-6 text-white">{post.opportunityTitle}</h2>}
+          {(post.opportunityRole || post.opportunityCommitment || post.opportunityWorkMode) && (
+            <p className="text-xs leading-5 text-[var(--muted)]">
+              {[post.opportunityRole, post.opportunityCommitment?.replace("_", "-").replace(/^./, (letter) => letter.toUpperCase()), post.opportunityWorkMode?.replace("_", " ")].filter(Boolean).join(" · ")}
+              {post.opportunityLocation ? ` · ${post.opportunityLocation}` : ""}
+            </p>
+          )}
+          {Boolean(post.opportunitySkills?.length) && (
+            <ul className="flex flex-wrap gap-1.5" aria-label="Skills needed">
+              {post.opportunitySkills?.map((skill) => (
+                <li key={`${post.id}-${skill}`} className="rounded-full border hairline px-2 py-1 text-[10px] text-[#d0cbc5]">{skill}</li>
+              ))}
+            </ul>
+          )}
+          {post.opportunityCompensation && (
+            <p className="text-xs text-[#d0cbc5]">Compensation: {post.opportunityCompensation}</p>
+          )}
+        </div>
       )}
       <div className="flex items-center gap-3 px-0.5">
         <Link

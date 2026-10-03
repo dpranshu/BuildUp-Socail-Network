@@ -17,6 +17,15 @@ export type Post = {
   mediaType: "image" | "video" | "text";
   postKind: PostKind;
   opportunityKind: OpportunityKind | null;
+  opportunityTitle?: string | null;
+  opportunityRole?: string | null;
+  opportunitySkills?: string[];
+  opportunityCommitment?: string | null;
+  opportunityWorkMode?: string | null;
+  opportunityLocation?: string | null;
+  opportunityCompensation?: string | null;
+  opportunityStatus?: "open" | "paused" | "filled" | null;
+  myInterestStatus?: "pending" | "accepted" | "declined" | null;
   createdAt: string;
   isMine: boolean;
   likedByMe: boolean;

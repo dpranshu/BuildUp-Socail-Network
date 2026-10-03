@@ -66,13 +66,13 @@ export async function GET(request: Request) {
 
   let query = supabase
     .from("posts")
-    .select("id,author_id,body,tags,media_urls,media_type,post_kind,opportunity_kind,likes_count,comments_count,reposts_count,created_at,author:profiles!posts_author_id_fkey(display_name,handle,bio,avatar_url,is_verified)")
+    .select("id,author_id,body,tags,media_urls,media_type,post_kind,opportunity_kind,opportunity_title,opportunity_role,opportunity_skills,opportunity_commitment,opportunity_work_mode,opportunity_location,opportunity_compensation,opportunity_status,likes_count,comments_count,reposts_count,created_at,author:profiles!posts_author_id_fkey(display_name,handle,bio,avatar_url,is_verified)")
     .is("deleted_at", null)
     .order("created_at", { ascending: false })
     .order("id", { ascending: false })
     .limit(pageSize + 1);
 
-  if (kind === "opportunity") query = query.eq("post_kind", "opportunity");
+  if (kind === "opportunity") query = query.eq("post_kind", "opportunity").eq("opportunity_status", "open");
   if (opportunityKind) query = query.eq("opportunity_kind", opportunityKind);
   if (followedIds) query = query.in("author_id", followedIds);
   if (blockedAuthorIds.length > 0) query = query.not("author_id", "in", `(${blockedAuthorIds.join(",")})`);
@@ -85,10 +85,10 @@ export async function GET(request: Request) {
   if (error) {
     console.error("Unable to load the feed.", { code: error.code, message: error.message });
     const needsOpportunityMigration = error.code === "42703"
-      && (error.message.includes("post_kind") || error.message.includes("opportunity_kind"));
+      && ["post_kind", "opportunity_kind", "opportunity_title", "opportunity_status"].some((field) => error.message.includes(field));
     return NextResponse.json({
       message: needsOpportunityMigration
-        ? "The database needs an update before the feed can load. Apply the Collabs database migration, then try again."
+        ? "The database needs an update before the feed can load. Apply the Collabs database migrations, then try again."
         : "Unable to load the feed.",
     }, { status: 500 });
   }
@@ -112,6 +112,11 @@ export async function GET(request: Request) {
   const myReposts = repostsResult.data;
   const likedIds = new Set((myLikes ?? []).map((like) => like.post_id));
   const repostedIds = new Set((myReposts ?? []).map((repost) => repost.post_id));
+  const interestResult = user && kind === "opportunity" && postIds.length > 0
+    ? await supabase.from("collab_interests").select("post_id,status").eq("applicant_id", user.id).in("post_id", postIds)
+    : { data: [] as { post_id: string; status: "pending" | "accepted" | "declined" }[], error: null };
+  if (interestResult.error) return NextResponse.json({ message: "Unable to load your collaboration requests." }, { status: 500 });
+  const interestStatuses = new Map((interestResult.data ?? []).map((item) => [item.post_id, item.status]));
 
   const posts = page.map((post) => ({
     id: post.id,
@@ -127,6 +132,15 @@ export async function GET(request: Request) {
     mediaType: post.media_type,
     postKind: post.post_kind,
     opportunityKind: post.opportunity_kind,
+    opportunityTitle: post.opportunity_title,
+    opportunityRole: post.opportunity_role,
+    opportunitySkills: post.opportunity_skills,
+    opportunityCommitment: post.opportunity_commitment,
+    opportunityWorkMode: post.opportunity_work_mode,
+    opportunityLocation: post.opportunity_location,
+    opportunityCompensation: post.opportunity_compensation,
+    opportunityStatus: post.opportunity_status,
+    myInterestStatus: interestStatuses.get(post.id) ?? null,
     likes: post.likes_count,
     comments: post.comments_count,
     reposts: post.reposts_count,

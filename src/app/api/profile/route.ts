@@ -72,7 +72,7 @@ export async function GET(request: Request) {
     const [postsResult, profileRepostsResult] = await Promise.all([
       supabase
         .from("posts")
-        .select("id,author_id,body,tags,media_urls,media_type,post_kind,opportunity_kind,likes_count,comments_count,reposts_count,created_at")
+        .select("id,author_id,body,tags,media_urls,media_type,post_kind,opportunity_kind,opportunity_title,opportunity_role,opportunity_skills,opportunity_commitment,opportunity_work_mode,opportunity_location,opportunity_compensation,opportunity_status,likes_count,comments_count,reposts_count,created_at")
         .eq("author_id", profileId)
         .is("deleted_at", null)
         .order("created_at", { ascending: false })
@@ -89,7 +89,7 @@ export async function GET(request: Request) {
     const repostedPostIds = profileRepostsResult.data.map((repost) => repost.post_id);
     const repostedPostsResult = repostedPostIds.length > 0
       ? await supabase.from("posts")
-          .select("id,author_id,body,tags,media_urls,media_type,post_kind,opportunity_kind,likes_count,comments_count,reposts_count,created_at,author:profiles!posts_author_id_fkey(display_name,handle,bio,avatar_url,is_verified)")
+          .select("id,author_id,body,tags,media_urls,media_type,post_kind,opportunity_kind,opportunity_title,opportunity_role,opportunity_skills,opportunity_commitment,opportunity_work_mode,opportunity_location,opportunity_compensation,opportunity_status,likes_count,comments_count,reposts_count,created_at,author:profiles!posts_author_id_fkey(display_name,handle,bio,avatar_url,is_verified)")
           .in("id", repostedPostIds)
           .is("deleted_at", null)
       : { data: [], error: null };
@@ -127,6 +127,14 @@ export async function GET(request: Request) {
       mediaType: post.media_type,
       postKind: post.post_kind,
       opportunityKind: post.opportunity_kind,
+      opportunityTitle: post.opportunity_title,
+      opportunityRole: post.opportunity_role,
+      opportunitySkills: post.opportunity_skills,
+      opportunityCommitment: post.opportunity_commitment,
+      opportunityWorkMode: post.opportunity_work_mode,
+      opportunityLocation: post.opportunity_location,
+      opportunityCompensation: post.opportunity_compensation,
+      opportunityStatus: post.opportunity_status,
       likes: post.likes_count,
       comments: post.comments_count,
       reposts: post.reposts_count,
@@ -153,6 +161,14 @@ export async function GET(request: Request) {
         mediaType: post.media_type,
         postKind: post.post_kind,
         opportunityKind: post.opportunity_kind,
+        opportunityTitle: post.opportunity_title,
+        opportunityRole: post.opportunity_role,
+        opportunitySkills: post.opportunity_skills,
+        opportunityCommitment: post.opportunity_commitment,
+        opportunityWorkMode: post.opportunity_work_mode,
+        opportunityLocation: post.opportunity_location,
+        opportunityCompensation: post.opportunity_compensation,
+        opportunityStatus: post.opportunity_status,
         likes: post.likes_count,
         comments: post.comments_count,
         reposts: post.reposts_count,
@@ -207,7 +223,7 @@ export async function GET(request: Request) {
       .is("deleted_at", null),
     supabase
       .from("posts")
-      .select("id,author_id,body,tags,media_urls,media_type,post_kind,opportunity_kind,likes_count,comments_count,reposts_count,created_at")
+      .select("id,author_id,body,tags,media_urls,media_type,post_kind,opportunity_kind,opportunity_title,opportunity_role,opportunity_skills,opportunity_commitment,opportunity_work_mode,opportunity_location,opportunity_compensation,opportunity_status,likes_count,comments_count,reposts_count,created_at")
       .eq("author_id", profileId)
       .is("deleted_at", null)
       .order("created_at", { ascending: false })
@@ -232,7 +248,7 @@ export async function GET(request: Request) {
   const repostedPostIds = profileRepostsResult.data.map((repost) => repost.post_id);
   const repostedPostsResult = repostedPostIds.length > 0
     ? await supabase.from("posts")
-        .select("id,author_id,body,tags,media_urls,media_type,post_kind,opportunity_kind,likes_count,comments_count,reposts_count,created_at,author:profiles!posts_author_id_fkey(display_name,handle,bio,avatar_url,is_verified)")
+        .select("id,author_id,body,tags,media_urls,media_type,post_kind,opportunity_kind,opportunity_title,opportunity_role,opportunity_skills,opportunity_commitment,opportunity_work_mode,opportunity_location,opportunity_compensation,opportunity_status,likes_count,comments_count,reposts_count,created_at,author:profiles!posts_author_id_fkey(display_name,handle,bio,avatar_url,is_verified)")
         .in("id", repostedPostIds)
         .is("deleted_at", null)
     : { data: [], error: null };
@@ -264,6 +280,14 @@ export async function GET(request: Request) {
     mediaType: post.media_type,
     postKind: post.post_kind,
     opportunityKind: post.opportunity_kind,
+    opportunityTitle: post.opportunity_title,
+    opportunityRole: post.opportunity_role,
+    opportunitySkills: post.opportunity_skills,
+    opportunityCommitment: post.opportunity_commitment,
+    opportunityWorkMode: post.opportunity_work_mode,
+    opportunityLocation: post.opportunity_location,
+    opportunityCompensation: post.opportunity_compensation,
+    opportunityStatus: post.opportunity_status,
     likes: post.likes_count,
     comments: post.comments_count,
     reposts: post.reposts_count,
@@ -290,6 +314,14 @@ export async function GET(request: Request) {
       mediaType: post.media_type,
       postKind: post.post_kind,
       opportunityKind: post.opportunity_kind,
+      opportunityTitle: post.opportunity_title,
+      opportunityRole: post.opportunity_role,
+      opportunitySkills: post.opportunity_skills,
+      opportunityCommitment: post.opportunity_commitment,
+      opportunityWorkMode: post.opportunity_work_mode,
+      opportunityLocation: post.opportunity_location,
+      opportunityCompensation: post.opportunity_compensation,
+      opportunityStatus: post.opportunity_status,
       likes: post.likes_count,
       comments: post.comments_count,
       reposts: post.reposts_count,
