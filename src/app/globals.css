@@ -48,6 +48,17 @@ body {
 .nav-icon { display: inline-flex; color: #c5bfb7; transition: color 150ms ease; }
 .nav-icon:hover, .nav-icon-active { color: var(--blue); }
 .create-icon { display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 50%; background: var(--blue); color: white; }
+.icon-nav,
+.mobile-nav-link > span > svg {
+  width: 24px;
+  height: 24px;
+  flex: 0 0 24px;
+}
+.icon-header {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 20px;
+}
 .mobile-nav {
   left: 0;
   width: 100%;
@@ -65,6 +76,7 @@ body {
 .feed-tab { position: relative; display: flex; height: 48px; flex: 1; align-items: center; justify-content: center; color: var(--muted); font-size: 14px; letter-spacing: -0.02em; }
 .hairline { border-color: var(--line); }
 .post-action { display: inline-flex; min-height: 34px; align-items: center; gap: 6px; color: #a9a39c; font-size: 12px; }
+.post-action > svg { width: 18px; height: 18px; flex: 0 0 18px; stroke-width: 1.8; }
 .post-action:hover { color: var(--foreground); }
 .post-action-liked { color: #ff6b82; }
 @keyframes post-like-pop {

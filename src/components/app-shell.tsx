@@ -186,27 +186,31 @@ export function AppShell({
             </svg>
           </Link>
           <div className="absolute right-3 flex items-center gap-1 sm:right-5 sm:gap-2">
-            <Link
-              href="/search"
-              aria-label="Search"
-              title="Search"
-              className={`flex h-10 w-10 items-center justify-center rounded-full hover:bg-white/[0.06] ${pathname === "/search" ? "text-[var(--blue)]" : "text-[var(--muted)] hover:text-white"}`}
-            >
-              <Search size={21} />
-            </Link>
-            <Link
-              href="/notifications"
-              aria-label={unreadNotifications > 0 ? `Notifications, ${unreadNotifications} unread` : "Notifications"}
-              title="Notifications"
-              className={`relative flex h-10 w-10 items-center justify-center rounded-full hover:bg-white/[0.06] ${pathname === "/notifications" ? "text-[var(--blue)]" : "text-[var(--muted)] hover:text-white"}`}
-            >
-              <Bell size={21} />
-              {unreadNotifications > 0 && (
-                <span aria-hidden="true" className="absolute right-1 top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-500 px-1 text-[10px] font-bold leading-none text-white ring-2 ring-[var(--background)]">
-                  {unreadNotifications > 9 ? "9+" : unreadNotifications}
-                </span>
-              )}
-            </Link>
+            {pathname !== "/profile" && (
+              <>
+                <Link
+                  href="/search"
+                  aria-label="Search"
+                  title="Search"
+                  className={`flex h-10 w-10 items-center justify-center rounded-full hover:bg-white/[0.06] ${pathname === "/search" ? "text-[var(--blue)]" : "text-[var(--muted)] hover:text-white"}`}
+                >
+                  <Search className="icon-header" size={20} strokeWidth={1.8} />
+                </Link>
+                <Link
+                  href="/notifications"
+                  aria-label={unreadNotifications > 0 ? `Notifications, ${unreadNotifications} unread` : "Notifications"}
+                  title="Notifications"
+                  className={`relative flex h-10 w-10 items-center justify-center rounded-full hover:bg-white/[0.06] ${pathname === "/notifications" ? "text-[var(--blue)]" : "text-[var(--muted)] hover:text-white"}`}
+                >
+                  <Bell className="icon-header" size={20} strokeWidth={1.8} />
+                  {unreadNotifications > 0 && (
+                    <span aria-hidden="true" className="absolute right-1 top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-500 px-1 text-[10px] font-bold leading-none text-white ring-2 ring-[var(--background)]">
+                      {unreadNotifications > 9 ? "9+" : unreadNotifications}
+                    </span>
+                  )}
+                </Link>
+              </>
+            )}
             {pathname === "/profile" && signedIn && (
               <div className="relative">
                 <button
@@ -221,7 +225,7 @@ export function AppShell({
                   }}
                   className="flex h-9 w-9 items-center justify-center rounded-full text-[var(--muted)] hover:bg-white/[0.06] hover:text-white"
                 >
-                  <Settings size={19} />
+                  <Settings className="icon-header" size={20} strokeWidth={1.8} />
                 </button>
                 {settingsOpen && (
                   <div role="menu" className="absolute right-0 top-11 z-50 min-w-44 overflow-hidden rounded-md border hairline bg-[var(--surface)] p-1 shadow-xl">
@@ -268,7 +272,7 @@ export function AppShell({
               className={`mobile-nav-link ${pathname === href ? "mobile-nav-active" : ""}`}
             >
               <span className="relative inline-flex">
-                <Icon size={25} strokeWidth={1.9} />
+                <Icon className="icon-nav" size={24} strokeWidth={1.8} />
                 {unread > 0 && (
                   <span aria-hidden="true" className="absolute -right-2 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-500 px-1 text-[10px] font-bold leading-none text-white ring-2 ring-[#0d0f11]">
                     {unread > 9 ? "9+" : unread}
