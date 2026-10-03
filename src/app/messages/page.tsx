@@ -25,6 +25,7 @@ type Message = {
 type Conversation = {
   id: string;
   createdAt: string;
+  isUnread: boolean;
   participant: Participant;
   latestMessage: Pick<Message, "id" | "body" | "sender_id" | "created_at"> | null;
 };
@@ -41,10 +42,15 @@ export default function MessagesPage() {
   const [error, setError] = useState("");
   const [signedOut, setSignedOut] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const conversationsRef = useRef(conversations);
   const selectedConversation = useMemo(
     () => conversations.find((conversation) => conversation.id === selectedId) ?? null,
     [conversations, selectedId],
   );
+
+  useEffect(() => {
+    conversationsRef.current = conversations;
+  }, [conversations]);
 
   useEffect(() => {
     let active = true;
@@ -100,6 +106,60 @@ export default function MessagesPage() {
   }, [router]);
 
   useEffect(() => {
+    let active = true;
+    const supabase = createClient();
+    const channel = supabase
+      .channel(`inbox-messages-${crypto.randomUUID()}`)
+      .on("postgres_changes", {
+        event: "INSERT",
+        schema: "public",
+        table: "messages",
+      }, (payload) => {
+        const row = payload.new;
+        if (
+          typeof row.id !== "string"
+          || typeof row.conversation_id !== "string"
+          || typeof row.sender_id !== "string"
+          || typeof row.body !== "string"
+          || typeof row.created_at !== "string"
+        ) return;
+        const incoming = row as Message;
+        setConversations((current) => current.map((conversation) => {
+          if (conversation.id !== incoming.conversation_id) return conversation;
+          const isFromOtherPerson = incoming.sender_id === conversation.participant.id;
+          return {
+            ...conversation,
+            latestMessage: incoming,
+            isUnread: isFromOtherPerson && conversation.id !== selectedId,
+          };
+        }).sort((a, b) =>
+          (b.latestMessage?.created_at ?? b.createdAt).localeCompare(a.latestMessage?.created_at ?? a.createdAt),
+        ));
+
+        if (incoming.sender_id !== conversationsRef.current.find((conversation) => conversation.id === incoming.conversation_id)?.participant.id) return;
+        if (selectedId === incoming.conversation_id) {
+          void fetch(`/api/messages/conversations/${encodeURIComponent(incoming.conversation_id)}/read`, { method: "POST" })
+            .then((response) => {
+              if (!response.ok) console.error("Unable to mark active conversation read.");
+            })
+            .catch((cause: unknown) => console.error("Unable to mark active conversation read.", cause));
+        } else {
+          window.dispatchEvent(new Event("buildup-unread-updated"));
+        }
+      })
+      .subscribe((status, subscriptionError) => {
+        if ((status === "CHANNEL_ERROR" || status === "TIMED_OUT") && active) {
+          console.error("Inbox Realtime subscription failed.", subscriptionError);
+        }
+      });
+
+    return () => {
+      active = false;
+      void supabase.removeChannel(channel);
+    };
+  }, [selectedId]);
+
+  useEffect(() => {
     if (!selectedId) {
       return;
     }
@@ -131,6 +191,14 @@ export default function MessagesPage() {
             : [...current, incoming].sort((a, b) =>
                 a.created_at.localeCompare(b.created_at) || a.id.localeCompare(b.id),
               ));
+          if (incoming.sender_id === selectedConversation?.participant.id) {
+            void fetch(`/api/messages/conversations/${encodeURIComponent(selectedId)}/read`, { method: "POST" })
+              .then((response) => {
+                if (!response.ok) console.error("Unable to mark active conversation read.");
+                else window.dispatchEvent(new Event("buildup-unread-updated"));
+              })
+              .catch((cause: unknown) => console.error("Unable to mark active conversation read.", cause));
+          }
         },
       )
       .subscribe((status, subscriptionError) => {
@@ -151,6 +219,10 @@ export default function MessagesPage() {
               a.created_at.localeCompare(b.created_at) || a.id.localeCompare(b.id),
             );
           });
+          setConversations((current) => current.map((conversation) =>
+            conversation.id === selectedId ? { ...conversation, isUnread: false } : conversation,
+          ));
+          window.dispatchEvent(new Event("buildup-unread-updated"));
         }
       })
       .catch((cause: unknown) => {
@@ -164,7 +236,7 @@ export default function MessagesPage() {
       active = false;
       void supabase.removeChannel(channel);
     };
-  }, [selectedId]);
+  }, [selectedId, selectedConversation?.participant.id]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
@@ -174,6 +246,10 @@ export default function MessagesPage() {
     setMessages([]);
     setLoadingMessages(true);
     setSelectedId(conversation.id);
+    setConversations((current) => current.map((item) =>
+      item.id === conversation.id ? { ...item, isUnread: false } : item,
+    ));
+    window.dispatchEvent(new Event("buildup-unread-updated"));
     setError("");
     router.push(`/messages?conversation=${encodeURIComponent(conversation.id)}`);
   }
@@ -207,11 +283,12 @@ export default function MessagesPage() {
           ));
       setConversations((current) => current.map((conversation) =>
         conversation.id === selectedId
-          ? { ...conversation, latestMessage: sent }
+          ? { ...conversation, latestMessage: sent, isUnread: false }
           : conversation,
       ).sort((a, b) =>
         (b.latestMessage?.created_at ?? b.createdAt).localeCompare(a.latestMessage?.created_at ?? a.createdAt),
       ));
+      window.dispatchEvent(new Event("buildup-unread-updated"));
       setDraft("");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Unable to send message.");
@@ -316,10 +393,13 @@ export default function MessagesPage() {
                     <ProfileAvatar src={conversation.participant.avatarUrl} alt="" className="h-12 w-12" iconSize={23} />
                     <span className="min-w-0 flex-1">
                       <span className="flex items-center justify-between gap-3">
-                        <span className="truncate text-sm font-semibold">{conversation.participant.name}</span>
-                        <time className="shrink-0 text-[10px] text-[var(--muted)]">{formatMessageTime(conversation.latestMessage?.created_at ?? conversation.createdAt)}</time>
+                        <span className={`truncate text-sm ${conversation.isUnread ? "font-bold text-white" : "font-semibold"}`}>{conversation.participant.name}</span>
+                        <span className="flex shrink-0 items-center gap-2">
+                          <time className="text-[10px] text-[var(--muted)]">{formatMessageTime(conversation.latestMessage?.created_at ?? conversation.createdAt)}</time>
+                          {conversation.isUnread && <span aria-label="Unread message" className="h-2 w-2 rounded-full bg-rose-500" />}
+                        </span>
                       </span>
-                      <span className="mt-1 block truncate text-xs text-[var(--muted)]">
+                      <span className={`mt-1 block truncate text-xs ${conversation.isUnread ? "font-medium text-white/80" : "text-[var(--muted)]"}`}>
                         {conversation.latestMessage
                           ? `${conversation.latestMessage.sender_id === conversation.participant.id ? "" : "You: "}${conversation.latestMessage.body}`
                           : conversation.participant.handle}

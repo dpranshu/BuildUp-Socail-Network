@@ -44,7 +44,11 @@ type ManagedOpportunity = {
 
 export default function CollabsPage() {
   const router = useRouter();
-  const [view, setView] = useState<"discover" | "mine">("discover");
+  const [view, setView] = useState<"discover" | "mine">(() =>
+    typeof window !== "undefined" && new URLSearchParams(window.location.search).get("view") === "mine"
+      ? "mine"
+      : "discover",
+  );
   const [posts, setPosts] = useState<Post[]>([]);
   const [kind, setKind] = useState<OpportunityKind | "all">("all");
   const [message, setMessage] = useState("");

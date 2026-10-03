@@ -3,9 +3,10 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import type { ReactNode } from "react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Ban, Bell, Handshake, House, LogOut, MessageCircle, Plus, Search, Settings } from "lucide-react";
 import { ProfileAvatar } from "@/components/profile-avatar";
+import { createClient } from "@/lib/supabase/client";
 
 const navItems = [
   { href: "/feed", label: "Home", icon: House },
@@ -27,10 +28,14 @@ export function AppShell({
   const router = useRouter();
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [signedIn, setSignedIn] = useState(false);
+  const [userId, setUserId] = useState<string | null>(null);
+  const [unreadNotifications, setUnreadNotifications] = useState(0);
+  const [unreadMessages, setUnreadMessages] = useState(0);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
   const [signOutError, setSignOutError] = useState("");
   const [hiddenChromePathname, setHiddenChromePathname] = useState<string | null>(null);
+  const unreadRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     let previousScrollY = window.scrollY;
@@ -65,12 +70,20 @@ export function AppShell({
         if (active) {
           setAvatarUrl(data.user?.avatarUrl ?? null);
           setSignedIn(Boolean(data.user));
+          setUserId(data.user?.id ?? null);
+          if (!data.user?.id) {
+            setUnreadNotifications(0);
+            setUnreadMessages(0);
+          }
         }
       })
       .catch(() => {
         if (active) {
           setAvatarUrl(null);
           setSignedIn(false);
+          setUserId(null);
+          setUnreadNotifications(0);
+          setUnreadMessages(0);
         }
       });
 
@@ -80,6 +93,71 @@ export function AppShell({
       window.removeEventListener("profile-avatar-updated", onAvatarUpdated);
     };
   }, [pathname]);
+
+  useEffect(() => {
+    if (!userId) return;
+
+    let active = true;
+    const refreshUnread = async () => {
+      try {
+        const response = await fetch("/api/notifications?summary=1");
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.message ?? "Unable to refresh unread activity.");
+        if (active) {
+          setUnreadNotifications(data.unreadNotifications ?? 0);
+          setUnreadMessages(data.unreadMessages ?? 0);
+        }
+      } catch (error) {
+        console.error("Unable to refresh unread activity.", error);
+      }
+    };
+    const handleUnreadUpdated = () => {
+      if (unreadRefreshTimerRef.current) clearTimeout(unreadRefreshTimerRef.current);
+      unreadRefreshTimerRef.current = setTimeout(() => { void refreshUnread(); }, 160);
+    };
+    const supabase = createClient();
+    const channel = supabase
+      .channel(`app-unread-${userId}`)
+      .on("postgres_changes", {
+        event: "INSERT",
+        schema: "public",
+        table: "notifications",
+        filter: `recipient_id=eq.${userId}`,
+      }, handleUnreadUpdated)
+      .on("postgres_changes", {
+        event: "UPDATE",
+        schema: "public",
+        table: "notifications",
+        filter: `recipient_id=eq.${userId}`,
+      }, handleUnreadUpdated)
+      .on("postgres_changes", {
+        event: "INSERT",
+        schema: "public",
+        table: "messages",
+      }, (payload) => {
+        if (payload.new.sender_id !== userId) handleUnreadUpdated();
+      })
+      .on("postgres_changes", {
+        event: "*",
+        schema: "public",
+        table: "conversation_reads",
+        filter: `user_id=eq.${userId}`,
+      }, handleUnreadUpdated)
+      .subscribe((status, subscriptionError) => {
+        if ((status === "CHANNEL_ERROR" || status === "TIMED_OUT") && active) {
+          console.error("Unread activity Realtime subscription failed.", subscriptionError);
+        }
+      });
+
+    void refreshUnread();
+    window.addEventListener("buildup-unread-updated", handleUnreadUpdated);
+    return () => {
+      active = false;
+      if (unreadRefreshTimerRef.current) clearTimeout(unreadRefreshTimerRef.current);
+      window.removeEventListener("buildup-unread-updated", handleUnreadUpdated);
+      void supabase.removeChannel(channel);
+    };
+  }, [userId]);
 
   async function signOut() {
     setSigningOut(true);
@@ -169,16 +247,26 @@ export function AppShell({
         {children}
       </main>
       <nav aria-label="Primary" className="primary-nav mobile-nav fixed inset-x-0 bottom-0 z-40 grid grid-cols-6 border-t border-white/[0.08] bg-[#0d0f11]">
-        {navItems.map(({ href, label, icon: Icon }) => (
-          <Link
-            key={href + label}
-            href={href}
-            aria-label={label}
-            className={`mobile-nav-link ${pathname === href ? "mobile-nav-active" : ""}`}
-          >
-            <Icon size={22} strokeWidth={1.8} />
-          </Link>
-        ))}
+        {navItems.map(({ href, label, icon: Icon }) => {
+          const unread = href === "/messages" ? unreadMessages : href === "/notifications" ? unreadNotifications : 0;
+          return (
+            <Link
+              key={href + label}
+              href={href}
+              aria-label={unread > 0 ? `${label}, ${unread} unread` : label}
+              className={`mobile-nav-link ${pathname === href ? "mobile-nav-active" : ""}`}
+            >
+              <span className="relative inline-flex">
+                <Icon size={22} strokeWidth={1.8} />
+                {unread > 0 && (
+                  <span aria-hidden="true" className={`absolute -right-1.5 -top-1.5 flex min-h-2 min-w-2 items-center justify-center rounded-full bg-rose-500 text-[8px] font-bold text-white ring-2 ring-[#0d0f11] ${href === "/notifications" ? "px-1" : ""}`}>
+                    {href === "/notifications" && unread <= 9 ? unread : ""}
+                  </span>
+                )}
+              </span>
+            </Link>
+          );
+        })}
       </nav>
     </div>
   );

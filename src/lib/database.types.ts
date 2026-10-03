@@ -35,6 +35,60 @@ export type Database = {
           Relation<"messages_sender_id_fkey", ["sender_id"], "profiles">
         ];
       };
+      notifications: {
+        Row: {
+          id: string;
+          recipient_id: string;
+          actor_id: string;
+          notification_type: "like" | "follow" | "comment" | "repost" | "collab_interest" | "collab_accepted" | "collab_declined" | "message";
+          source_id: string;
+          post_id: string | null;
+          conversation_id: string | null;
+          interest_id: string | null;
+          created_at: string;
+          read_at: string | null;
+        };
+        Insert: {
+          id?: string;
+          recipient_id: string;
+          actor_id: string;
+          notification_type: "like" | "follow" | "comment" | "repost" | "collab_interest" | "collab_accepted" | "collab_declined" | "message";
+          source_id: string;
+          post_id?: string | null;
+          conversation_id?: string | null;
+          interest_id?: string | null;
+          created_at?: string;
+          read_at?: string | null;
+        };
+        Update: {
+          id?: string;
+          recipient_id?: string;
+          actor_id?: string;
+          notification_type?: "like" | "follow" | "comment" | "repost" | "collab_interest" | "collab_accepted" | "collab_declined" | "message";
+          source_id?: string;
+          post_id?: string | null;
+          conversation_id?: string | null;
+          interest_id?: string | null;
+          created_at?: string;
+          read_at?: string | null;
+        };
+        Relationships: [
+          Relation<"notifications_recipient_id_fkey", ["recipient_id"], "profiles">,
+          Relation<"notifications_actor_id_fkey", ["actor_id"], "profiles">,
+          Relation<"notifications_post_id_fkey", ["post_id"], "posts">,
+          Relation<"notifications_conversation_id_fkey", ["conversation_id"], "conversations">,
+          Relation<"notifications_interest_id_fkey", ["interest_id"], "collab_interests">
+        ];
+      };
+      conversation_reads: {
+        Row: { conversation_id: string; user_id: string; last_read_at: string };
+        Insert: { conversation_id: string; user_id: string; last_read_at?: string };
+        Update: { conversation_id?: string; user_id?: string; last_read_at?: string };
+        Relationships: [
+          Relation<"conversation_reads_conversation_id_fkey", ["conversation_id"], "conversations">,
+          Relation<"conversation_reads_user_id_fkey", ["user_id"], "profiles">
+        ];
+      };
       shipped_projects: {
         Row: { id: string; owner_id: string; title: string; description: string; link: string | null; badge: string; created_at: string };
         Insert: { id?: string; owner_id: string; title: string; description?: string; link?: string | null; badge?: string; created_at?: string };

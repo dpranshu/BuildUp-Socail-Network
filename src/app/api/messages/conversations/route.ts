@@ -40,6 +40,17 @@ export async function GET() {
   }
 
   const conversations = (data ?? []) as ConversationRow[];
+  const conversationIds = conversations.map((conversation) => conversation.id);
+  const readsResult = conversationIds.length > 0
+    ? await supabase.from("conversation_reads").select("conversation_id,last_read_at")
+        .eq("user_id", user.id).in("conversation_id", conversationIds)
+    : { data: [], error: null };
+  if (readsResult.error) {
+    console.error("Unable to load conversation read status:", readsResult.error.message, readsResult.error.code);
+    return NextResponse.json({ message: "Unable to load message status." }, { status: 500 });
+  }
+  const readAtByConversation = new Map((readsResult.data ?? []).map((read) => [read.conversation_id, read.last_read_at]));
+
   const profileIds = [...new Set(conversations.map((conversation) =>
     conversation.participant_one === user.id ? conversation.participant_two : conversation.participant_one,
   ))];
@@ -61,9 +72,16 @@ export async function GET() {
       : conversation.participant_one;
     const profile = profilesById.get(participantId);
     if (!profile) return [];
+    const latestMessage = conversation.messages[0] ?? null;
+    const readAt = readAtByConversation.get(conversation.id);
     return [{
       id: conversation.id,
       createdAt: conversation.created_at,
+      isUnread: Boolean(
+        latestMessage
+        && latestMessage.sender_id === participantId
+        && (!readAt || latestMessage.created_at > readAt),
+      ),
       participant: {
         id: profile.id,
         name: profile.display_name,
@@ -71,7 +89,7 @@ export async function GET() {
         avatarUrl: profile.avatar_url,
         isVerified: profile.is_verified,
       },
-      latestMessage: conversation.messages[0] ?? null,
+      latestMessage,
     }];
   }).sort((a, b) => {
     const aTime = a.latestMessage?.created_at ?? a.createdAt;
